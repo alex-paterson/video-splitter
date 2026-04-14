@@ -3,17 +3,17 @@
  * segment-render — Extract and render a video segment, reframed to a target
  * aspect ratio using cover-fill center cropping.
  *
- * Usage: tsx src/segment-render.ts [options] <input> [segment]
- *        tsx src/segment-render.ts [options] <input>  (reads segment JSON from stdin)
+ * Usage: tsx src/commands/segment-render.ts [options] <input> [segment]
+ *        tsx src/commands/segment-render.ts [options] <input>  (reads segment JSON from stdin)
  */
 
 import "dotenv/config";
 import { Command } from "commander";
 import path from "path";
 import fs from "fs";
-import { ffprobe, getVideoStream, parseFraction, runFfmpeg } from "../lib/ffmpeg.js";
-import { loadSegment, Segment, SegmentSchema } from "../lib/transcript.js";
-import { ProgressReporter } from "../lib/progress.js";
+import { ffprobe, getVideoStream, parseFraction, runFfmpeg } from "../../lib/ffmpeg.js";
+import { loadSegment, Segment, SegmentSchema } from "../../lib/transcript.js";
+import { ProgressReporter } from "../../lib/progress.js";
 
 const ASPECT_PRESETS: Record<string, [number, number]> = {
   portrait: [9, 16],

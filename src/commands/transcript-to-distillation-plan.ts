@@ -3,7 +3,7 @@
  * transcript-to-distillation-plan — Analyze a transcript with Claude to find the
  * overarching narrative and save a .distillation.json plan (keep intervals).
  *
- * Usage: tsx src/transcript-to-distillation-plan.ts [options] <transcript>
+ * Usage: tsx src/commands/transcript-to-distillation-plan.ts [options] <transcript>
  */
 
 import "dotenv/config";
@@ -17,7 +17,7 @@ import {
   Transcript,
   DistillationKeep,
   saveDistillation,
-} from "../lib/transcript.js";
+} from "../../lib/transcript.js";
 
 const program = new Command();
 

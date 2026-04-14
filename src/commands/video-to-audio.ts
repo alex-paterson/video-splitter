@@ -2,7 +2,7 @@
 /**
  * video-to-audio — Extract the audio track from a video to a 16kHz mono MP3.
  *
- * Usage: tsx src/video-to-audio.ts [options] <input> [output]
+ * Usage: tsx src/commands/video-to-audio.ts [options] <input> [output]
  */
 
 import "dotenv/config";
@@ -10,8 +10,8 @@ import { Command } from "commander";
 import path from "path";
 import fs from "fs";
 import { spawn } from "child_process";
-import { ffprobe } from "../lib/ffmpeg.js";
-import { ProgressReporter } from "../lib/progress.js";
+import { ffprobe } from "../../lib/ffmpeg.js";
+import { ProgressReporter } from "../../lib/progress.js";
 
 const program = new Command();
 

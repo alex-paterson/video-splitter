@@ -2,16 +2,16 @@
 /**
  * distillation-render — Render a .distillation.json plan to a condensed video.
  *
- * Usage: tsx src/distillation-render.ts [options] <distillation>
+ * Usage: tsx src/commands/distillation-render.ts [options] <distillation>
  */
 
 import "dotenv/config";
 import { Command } from "commander";
 import path from "path";
 import fs from "fs";
-import { writeConcatFile, runFfmpeg, registerTmp } from "../lib/ffmpeg.js";
-import { loadDistillation } from "../lib/transcript.js";
-import { ProgressReporter } from "../lib/progress.js";
+import { writeConcatFile, runFfmpeg, registerTmp } from "../../lib/ffmpeg.js";
+import { loadDistillation } from "../../lib/transcript.js";
+import { ProgressReporter } from "../../lib/progress.js";
 
 const program = new Command();
 

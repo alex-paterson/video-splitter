@@ -3,7 +3,7 @@
  * audio-to-transcript — Transcribe an audio file via Whisper with multi-speaker
  * diarization, saved as a .transcript.json file.
  *
- * Usage: tsx src/audio-to-transcript.ts [options] <audio> [output]
+ * Usage: tsx src/commands/audio-to-transcript.ts [options] <audio> [output]
  */
 
 import "dotenv/config";
@@ -12,13 +12,13 @@ import path from "path";
 import fs from "fs";
 import { spawn } from "child_process";
 import undici from "undici";
-import { ffprobe, tmpPath, registerTmp } from "../lib/ffmpeg.js";
+import { ffprobe, tmpPath, registerTmp } from "../../lib/ffmpeg.js";
 import {
   Transcript,
   TranscriptSegment,
   saveTranscript,
-} from "../lib/transcript.js";
-import { ProgressReporter } from "../lib/progress.js";
+} from "../../lib/transcript.js";
+import { ProgressReporter } from "../../lib/progress.js";
 
 const program = new Command();
 

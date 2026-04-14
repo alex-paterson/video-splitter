@@ -61,7 +61,7 @@ video-splitter/
 
 **Purpose:** Remove periods of silence from a video, producing a tighter cut. Designed to stream through 60GB+ files without loading them into memory.
 
-**Binary:** `npx ts-node src/video-remove-silence.ts`
+**Binary:** `npx ts-node src/commands/video-remove-silence.ts`
 
 **Dependencies:** `ffmpeg` (system), `fluent-ffmpeg` (npm)
 
@@ -102,7 +102,7 @@ Options:
 
 **Purpose:** Produce a multi-speaker diarized transcript of the video's audio track, saved as a `.transcript.json` file.
 
-**Binary:** `npx ts-node src/video-to-transcript.ts`
+**Binary:** `npx ts-node src/commands/video-to-transcript.ts`
 
 **Dependencies:** `ffmpeg` (system), `openai` (npm — Whisper API), `@anthropic-ai/sdk` optional post-processing
 
@@ -149,7 +149,7 @@ PYANNOTE_ENDPOINT       URL for local pyannote sidecar (default: http://localhos
 
 **Purpose:** Use an LLM to analyze a transcript and identify a coherent, standalone video segment within a specified approximate duration.
 
-**Binary:** `npx ts-node src/transcript-find-segment.ts`
+**Binary:** `npx ts-node src/commands/transcript-find-segment.ts`
 
 **Dependencies:** `@anthropic-ai/sdk` (npm)
 
@@ -204,7 +204,7 @@ ANTHROPIC_API_KEY       Required
 
 **Purpose:** Extract and render a video segment from the source MKV, reframed to a target aspect ratio using center-fill cropping.
 
-**Binary:** `npx ts-node src/segment-render.ts`
+**Binary:** `npx ts-node src/commands/segment-render.ts`
 
 **Dependencies:** `ffmpeg` (system), `fluent-ffmpeg` (npm)
 

@@ -3,7 +3,7 @@
  * transcript-find-segment — Use Claude to identify a coherent, standalone video segment
  * from a diarized transcript.
  *
- * Usage: tsx src/transcript-find-segment.ts [options] <transcript>
+ * Usage: tsx src/commands/transcript-find-segment.ts [options] <transcript>
  * Output: .segment.json to --output or stdout
  */
 
@@ -12,7 +12,7 @@ import { Command } from "commander";
 import path from "path";
 import fs from "fs";
 import Anthropic from "@anthropic-ai/sdk";
-import { loadTranscript, Transcript, TranscriptSegment, SegmentSchema } from "../lib/transcript.js";
+import { loadTranscript, Transcript, TranscriptSegment, SegmentSchema } from "../../lib/transcript.js";
 import { z } from "zod";
 
 const program = new Command();
@@ -27,6 +27,7 @@ program
   .option("--speaker <id>", "Restrict to segments dominated by this speaker")
   .option("--min-speakers <n>", "Minimum number of speakers that must appear", "1")
   .option("--count <n>", "Number of candidate segments to return", "1")
+  .option("--max-seconds <n>", "Maximum allowed segment duration; discard if exceeded")
   .option("--output <path>", "Write .segment.json to this path (default: stdout)")
   .option("--model <model>", "Claude model to use", "claude-opus-4-6");
 
@@ -40,6 +41,7 @@ const opts = program.opts<{
   speaker?: string;
   minSpeakers: string;
   count: string;
+  maxSeconds?: string;
   output?: string;
   model: string;
 }>();
@@ -70,6 +72,7 @@ function buildPrompt(transcript: Transcript, opts: {
   speaker?: string;
   minSpeakers: number;
   count: number;
+  maxSeconds?: number;
 }): string {
   const transcriptText = buildTranscriptText(transcript.segments);
   const topicLine = opts.topic ? `\nFocus topic/theme: "${opts.topic}"` : "";
@@ -77,10 +80,13 @@ function buildPrompt(transcript: Transcript, opts: {
   const minSpeakerLine = opts.minSpeakers > 1
     ? `\nAt least ${opts.minSpeakers} speakers must appear.`
     : "";
+  const maxLine = opts.maxSeconds !== undefined
+    ? `\nHARD CEILING: segment duration MUST NOT exceed ${opts.maxSeconds} seconds. If no self-contained segment fits, pick the tightest available.`
+    : "";
 
   return `You are a video editor analyzing a speaker-diarized transcript. Your task is to identify ${opts.count > 1 ? `${opts.count} candidate segments` : "one segment"} that would make excellent standalone video clips.
 
-Target duration: ${opts.targetDuration}s ± ${opts.tolerance}s (acceptable range: ${opts.targetDuration - opts.tolerance}s – ${opts.targetDuration + opts.tolerance}s)${topicLine}${speakerLine}${minSpeakerLine}
+Target duration: ${opts.targetDuration}s ± ${opts.tolerance}s (acceptable range: ${opts.targetDuration - opts.tolerance}s – ${opts.targetDuration + opts.tolerance}s)${topicLine}${speakerLine}${minSpeakerLine}${maxLine}
 
 SELECTION CRITERIA (in order of importance):
 1. The segment must be self-contained — a viewer with no prior context should understand it fully.
@@ -181,6 +187,7 @@ async function main() {
   process.stderr.write("\n");
 
   const client = new Anthropic({ apiKey });
+  const maxSeconds = opts.maxSeconds !== undefined ? parseFloat(opts.maxSeconds) : undefined;
   const prompt = buildPrompt(transcript, {
     targetDuration,
     tolerance,
@@ -188,6 +195,7 @@ async function main() {
     speaker: opts.speaker,
     minSpeakers: parseInt(opts.minSpeakers),
     count,
+    maxSeconds,
   });
 
   process.stderr.write(`Calling ${opts.model}…\n`);
@@ -258,6 +266,37 @@ async function main() {
   }
 
   const result = count === 1 ? validated[0] : validated;
+
+  if (maxSeconds !== undefined) {
+    const over = (Array.isArray(result) ? result : [result]).filter(
+      (s) => s.end_s - s.start_s > maxSeconds
+    );
+    if (over.length > 0) {
+      const worst = over.reduce((a, b) => ((b.end_s - b.start_s) > (a.end_s - a.start_s) ? b : a));
+      const dur = worst.end_s - worst.start_s;
+      const outForReject =
+        opts.output ??
+        path.join(
+          path.dirname(path.resolve(transcriptArg)),
+          path.basename(transcriptArg).replace(/\.transcript\.json$/, "") + ".segment.json"
+        );
+      const rejectedPath = path.resolve(outForReject).replace(/\.segment\.json$/, ".rejected.json");
+      fs.writeFileSync(
+        rejectedPath,
+        JSON.stringify(
+          { reason: "too_long", duration_s: dur, max_seconds: maxSeconds },
+          null,
+          2
+        )
+      );
+      process.stderr.write(
+        `DISCARDED: too long (${dur.toFixed(1)}s > ${maxSeconds}s)\n`
+      );
+      process.stderr.write(`Wrote rejection: ${rejectedPath}\n`);
+      process.exit(2);
+    }
+  }
+
   const json = JSON.stringify(result, null, 2);
 
   if (opts.output) {

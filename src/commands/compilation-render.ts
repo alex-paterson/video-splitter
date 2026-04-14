@@ -3,7 +3,7 @@
  * compilation-render — Render a .compilation.json plan to a single video,
  * concatenating all kept passages with cover-fill cropping to a target aspect.
  *
- * Usage: tsx src/compilation-render.ts [options] <compilation>
+ * Usage: tsx src/commands/compilation-render.ts [options] <compilation>
  */
 
 import "dotenv/config";
@@ -14,9 +14,9 @@ import {
   ffprobe,
   getVideoStream,
   runFfmpeg,
-} from "../lib/ffmpeg.js";
-import { loadCompilation } from "../lib/transcript.js";
-import { ProgressReporter } from "../lib/progress.js";
+} from "../../lib/ffmpeg.js";
+import { loadCompilation } from "../../lib/transcript.js";
+import { ProgressReporter } from "../../lib/progress.js";
 
 const ASPECT_PRESETS: Record<string, [number, number]> = {
   portrait: [9, 16],

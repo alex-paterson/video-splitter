@@ -2,7 +2,7 @@
 /**
  * video-remove-silence — Remove silent intervals from a video file.
  *
- * Usage: tsx src/video-remove-silence.ts [options] <input> [output]
+ * Usage: tsx src/commands/video-remove-silence.ts [options] <input> [output]
  */
 
 import "dotenv/config";
@@ -16,8 +16,8 @@ import {
   runFfmpeg,
   registerTmp,
   SilenceInterval,
-} from "../lib/ffmpeg.js";
-import { ProgressReporter } from "../lib/progress.js";
+} from "../../lib/ffmpeg.js";
+import { ProgressReporter } from "../../lib/progress.js";
 
 const program = new Command();
 

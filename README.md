@@ -119,17 +119,17 @@ video-remove-silence [options] <input> [output]
 
 ```bash
 # Preview what silence would be cut
-npx tsx src/video-remove-silence.ts --preview lecture.mkv
+npx tsx src/commands/video-remove-silence.ts --preview lecture.mkv
 
 # Cut silence with default settings
-npx tsx src/video-remove-silence.ts lecture.mkv
+npx tsx src/commands/video-remove-silence.ts lecture.mkv
 # → lecture.cut.mkv
 
 # More aggressive cut, custom output path
-npx tsx src/video-remove-silence.ts --noise-db -40 --min-silence 0.8 lecture.mkv out/tight.mkv
+npx tsx src/commands/video-remove-silence.ts --noise-db -40 --min-silence 0.8 lecture.mkv out/tight.mkv
 
 # Output as MP4
-npx tsx src/video-remove-silence.ts --format mp4 lecture.mkv
+npx tsx src/commands/video-remove-silence.ts --format mp4 lecture.mkv
 ```
 
 ### Notes
@@ -164,20 +164,20 @@ Output is a `.transcript.json` file alongside the input by default.
 
 ```bash
 # Basic transcription (whisper-heuristic diarization)
-npx tsx src/video-to-transcript.ts lecture.mkv
+npx tsx src/commands/video-to-transcript.ts lecture.mkv
 # → lecture.transcript.json
 
 # With AssemblyAI diarization (better accuracy, requires key)
-DIARIZE_BACKEND=assemblyai npx tsx src/video-to-transcript.ts --speakers 2 lecture.mkv
+DIARIZE_BACKEND=assemblyai npx tsx src/commands/video-to-transcript.ts --speakers 2 lecture.mkv
 
 # English, large chunks (fewer API calls for long files)
-npx tsx src/video-to-transcript.ts --language en --chunk-minutes 20 lecture.mkv
+npx tsx src/commands/video-to-transcript.ts --language en --chunk-minutes 20 lecture.mkv
 
 # Resume after an interrupted run
-npx tsx src/video-to-transcript.ts --resume lecture.mkv
+npx tsx src/commands/video-to-transcript.ts --resume lecture.mkv
 
 # No diarization, just transcript
-npx tsx src/video-to-transcript.ts --no-diarize lecture.mkv
+npx tsx src/commands/video-to-transcript.ts --no-diarize lecture.mkv
 ```
 
 ### Transcript format
@@ -245,24 +245,24 @@ transcript-find-segment [options] <transcript>
 
 ```bash
 # Find a 60-second standalone segment, print to stdout
-npx tsx src/transcript-find-segment.ts lecture.transcript.json
+npx tsx src/commands/transcript-find-segment.ts lecture.transcript.json
 
 # 90-second segment about a specific topic, save to file
-npx tsx src/transcript-find-segment.ts \
+npx tsx src/commands/transcript-find-segment.ts \
   --duration 90 --tolerance 20 \
   --topic "introduction to neural networks" \
   --output segment.json \
   lecture.transcript.json
 
 # Get 3 candidates for manual review
-npx tsx src/transcript-find-segment.ts --count 3 --duration 120 lecture.transcript.json
+npx tsx src/commands/transcript-find-segment.ts --count 3 --duration 120 lecture.transcript.json
 
 # Only consider one speaker
-npx tsx src/transcript-find-segment.ts --speaker SPEAKER_01 --duration 60 lecture.transcript.json
+npx tsx src/commands/transcript-find-segment.ts --speaker SPEAKER_01 --duration 60 lecture.transcript.json
 
 # Pipe directly into segment-render
-npx tsx src/transcript-find-segment.ts --duration 90 lecture.transcript.json \
-  | npx tsx src/segment-render.ts --aspect portrait lecture.mkv
+npx tsx src/commands/transcript-find-segment.ts --duration 90 lecture.transcript.json \
+  | npx tsx src/commands/segment-render.ts --aspect portrait lecture.mkv
 ```
 
 ### Segment format
@@ -327,26 +327,26 @@ The segment can be:
 
 ```bash
 # 9:16 portrait from a segment file
-npx tsx src/segment-render.ts --aspect portrait lecture.mkv segment.json
+npx tsx src/commands/segment-render.ts --aspect portrait lecture.mkv segment.json
 
 # Square clip with a specific output path
-npx tsx src/segment-render.ts --aspect square --output clip.mp4 lecture.mkv segment.json
+npx tsx src/commands/segment-render.ts --aspect square --output clip.mp4 lecture.mkv segment.json
 
 # Letterbox instead of crop
-npx tsx src/segment-render.ts --aspect 9:16 --fit lecture.mkv segment.json
+npx tsx src/commands/segment-render.ts --aspect 9:16 --fit lecture.mkv segment.json
 
 # Inline JSON segment
-npx tsx src/segment-render.ts --aspect landscape lecture.mkv \
+npx tsx src/commands/segment-render.ts --aspect landscape lecture.mkv \
   '{"source":"lecture.mkv","start_s":60,"end_s":120,"title":"Test","rationale":"","speakers":[]}'
 
 # Hardware-accelerated encode (NVIDIA)
-npx tsx src/segment-render.ts --aspect portrait --hw-accel nvenc lecture.mkv segment.json
+npx tsx src/commands/segment-render.ts --aspect portrait --hw-accel nvenc lecture.mkv segment.json
 
 # Hardware-accelerated encode (AMD/Intel on Linux)
-npx tsx src/segment-render.ts --aspect portrait --hw-accel vaapi lecture.mkv segment.json
+npx tsx src/commands/segment-render.ts --aspect portrait --hw-accel vaapi lecture.mkv segment.json
 
 # Faster encode, slightly larger file
-npx tsx src/segment-render.ts --aspect portrait --preset fast --crf 22 lecture.mkv segment.json
+npx tsx src/commands/segment-render.ts --aspect portrait --preset fast --crf 22 lecture.mkv segment.json
 ```
 
 ### Cover-fill crop explained
@@ -376,16 +376,16 @@ All pipelines start from the **original** MKV. Do not transcribe or render from 
 
 ```bash
 # 1. Extract audio from original
-npx tsx src/video-to-audio.ts lecture.mkv
+npx tsx src/commands/video-to-audio.ts lecture.mkv
 # 2. Transcribe
-npx tsx src/audio-to-transcript.ts --speakers 2 lecture.audio.mp3 --source lecture.mkv
+npx tsx src/commands/audio-to-transcript.ts --speakers 2 lecture.audio.mp3 --source lecture.mkv
 # 3. Find a 90-second segment
-npx tsx src/transcript-find-segment.ts --duration 90 --topic "your topic" \
+npx tsx src/commands/transcript-find-segment.ts --duration 90 --topic "your topic" \
   --output segment.json lecture.transcript.json
 # 4. Render from the original
-npx tsx src/segment-render.ts --aspect portrait lecture.mkv segment.json
+npx tsx src/commands/segment-render.ts --aspect portrait lecture.mkv segment.json
 # 5. Tighten by removing silence in the rendered clip
-npx tsx src/video-remove-silence.ts --reencode lecture_<start>-<end>.mp4
+npx tsx src/commands/video-remove-silence.ts --reencode lecture_<start>-<end>.mp4
 ```
 
 ### Topic compilation (stitched highlights from one video)
@@ -393,11 +393,11 @@ npx tsx src/video-remove-silence.ts --reencode lecture_<start>-<end>.mp4
 ```bash
 # 1–2. Audio + transcript from original (as above)
 # 3. Derive a topic story
-npx tsx src/transcript-to-topic.ts --topic "bug discoveries" lecture.transcript.json
+npx tsx src/commands/transcript-to-topic.ts --topic "bug discoveries" lecture.transcript.json
 # 4. Filter the transcript into a compilation plan
-npx tsx src/topic-to-compilation.ts lecture.bug-discoveries.topic.json
+npx tsx src/commands/topic-to-compilation.ts lecture.bug-discoveries.topic.json
 # 5. Render the compilation from the ORIGINAL MKV
-npx tsx src/compilation-render.ts --aspect portrait lecture.bug-discoveries.compilation.json
+npx tsx src/commands/compilation-render.ts --aspect portrait lecture.bug-discoveries.compilation.json
 ```
 
 ### Narrative distillation (whole-session condense, for reference viewing)
@@ -405,9 +405,9 @@ npx tsx src/compilation-render.ts --aspect portrait lecture.bug-discoveries.comp
 ```bash
 # 1–2. Audio + transcript from original
 # 3. Plan the distillation
-npx tsx src/transcript-to-distillation-plan.ts lecture.transcript.json
+npx tsx src/commands/transcript-to-distillation-plan.ts lecture.transcript.json
 # 4. Render
-npx tsx src/distillation-render.ts lecture.distillation.json
+npx tsx src/commands/distillation-render.ts lecture.distillation.json
 ```
 Distilled videos are for watching only — do not feed them back into the pipeline.
 

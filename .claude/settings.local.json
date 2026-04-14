@@ -16,7 +16,9 @@
       "Bash(ffprobe:*)",
       "Bash(grep -r \"export.*Model\" /home/alex/Projects/video-splitter/node_modules/@strands-agents/sdk/dist/src/models/*.d.ts)",
       "Bash(ls -1 /home/alex/Projects/video-splitter/node_modules/@strands-agents/sdk/dist/src/models/*.d.ts)",
-      "Bash(xargs -I {} basename {})"
+      "Bash(xargs -I {} basename {})",
+      "Bash(grep:*)",
+      "Bash(git stash:*)"
     ]
   }
 }

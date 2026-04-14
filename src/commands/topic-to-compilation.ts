@@ -4,7 +4,7 @@
  * the referenced transcript line-by-line and save the kept passages as a
  * .compilation.json plan (no rendering).
  *
- * Usage: tsx src/topic-to-compilation.ts [options] <topic>
+ * Usage: tsx src/commands/topic-to-compilation.ts [options] <topic>
  */
 
 import "dotenv/config";
@@ -19,7 +19,7 @@ import {
   TranscriptSegment,
   CompilationClip,
   saveCompilation,
-} from "../lib/transcript.js";
+} from "../../lib/transcript.js";
 import { z } from "zod";
 
 const program = new Command();
@@ -38,6 +38,7 @@ program
     "Merge adjacent kept segments closer than this many seconds",
     "0.5"
   )
+  .option("--max-seconds <n>", "Maximum allowed total clip duration; discard plan if exceeded")
   .option("--model <model>", "Claude model to use", "claude-opus-4-6");
 
 if (process.argv.length <= 2) { program.outputHelp(); process.exit(0); }
@@ -48,6 +49,7 @@ const opts = program.opts<{
   source?: string;
   output?: string;
   mergeGap: string;
+  maxSeconds?: string;
   model: string;
 }>();
 
@@ -81,12 +83,16 @@ async function filterByStory(
   topic: string,
   story: string,
   model: string,
-  client: Anthropic
+  client: Anthropic,
+  maxSeconds?: number
 ): Promise<CompilationClip[]> {
   const transcriptText = buildTranscriptText(transcript.segments);
+  const maxLine = maxSeconds !== undefined
+    ? `\n\nHARD CEILING: the sum of kept clip durations MUST NOT EXCEED ${maxSeconds} seconds total. Cut aggressively. If you can't fit under the ceiling, keep only the most essential beats.`
+    : "";
   const prompt = `You are a video editor making an aggressive cut of a transcript to tell a specific story.
 
-Topic: "${topic}"
+Topic: "${topic}"${maxLine}
 
 STORY TO TELL:
 ${story}
@@ -197,7 +203,8 @@ async function main() {
   process.stderr.write(`Filtering by story with ${opts.model}…\n`);
 
   const client = new Anthropic({ apiKey });
-  const rawClips = await filterByStory(transcript, topic.topic, topic.story, opts.model, client);
+  const maxSeconds = opts.maxSeconds !== undefined ? parseFloat(opts.maxSeconds) : undefined;
+  const rawClips = await filterByStory(transcript, topic.topic, topic.story, opts.model, client, maxSeconds);
 
   const clips = mergeClips(rawClips, mergeGap);
   const totalDuration = clips.reduce((s, c) => s + c.end_s - c.start_s, 0);
@@ -226,6 +233,24 @@ async function main() {
   const compilationPath = path.resolve(
     opts.output ?? path.join(outDir, `${topicBase}.compilation.json`)
   );
+
+  if (maxSeconds !== undefined && totalDuration > maxSeconds) {
+    const rejectedPath = compilationPath.replace(/\.compilation\.json$/, ".rejected.json");
+    fs.writeFileSync(
+      rejectedPath,
+      JSON.stringify(
+        { reason: "too_long", duration_s: totalDuration, max_seconds: maxSeconds },
+        null,
+        2
+      )
+    );
+    process.stderr.write(
+      `DISCARDED: too long (${totalDuration.toFixed(1)}s > ${maxSeconds}s)\n`
+    );
+    process.stderr.write(`Wrote rejection: ${rejectedPath}\n`);
+    process.exit(2);
+  }
+
   saveCompilation(compilationPath, {
     source: sourcePath,
     topic: topic.topic,
