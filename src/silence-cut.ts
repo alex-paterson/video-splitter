@@ -34,8 +34,10 @@ program
   .option("--threads <n>", "ffmpeg thread count (0 = auto)", "0")
   .option("--reencode", "Re-encode using filter_complex trim (frame-accurate, no audio repeats; use on already-encoded clips)")
   .option("--crf <n>", "CRF quality when --reencode is set (default: 18)", "18")
-  .option("--preset <preset>", "Encoding preset when --reencode is set (default: medium)", "medium")
-  .parse();
+  .option("--preset <preset>", "Encoding preset when --reencode is set (default: medium)", "medium");
+
+if (process.argv.length <= 2) { program.outputHelp(); process.exit(0); }
+program.parse();
 
 const opts = program.opts<{
   noiseDb: string;

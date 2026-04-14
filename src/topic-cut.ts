@@ -57,7 +57,10 @@ program
   .option("--model <model>", "Claude model to use", "claude-opus-4-6")
   .option("--crf <n>", "Output CRF quality", "18")
   .option("--preset <preset>", "ffmpeg encoding preset", "medium")
-  .option("--threads <n>", "ffmpeg thread count (0 = auto)", "0")
+  .option("--threads <n>", "ffmpeg thread count (0 = auto)", "0");
+
+if (process.argv.length <= 2) { program.outputHelp(); process.exit(0); }
+program
   .parse();
 
 const opts = program.opts<{

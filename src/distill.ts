@@ -28,8 +28,10 @@ program
   .option("--focus <text>", "What to focus on or preserve (e.g. 'bug discoveries', 'funny moments')")
   .option("--pad <s>", "Seconds of padding to add around each kept segment", "0.3")
   .option("--preview", "Print the distill plan without encoding")
-  .option("--model <model>", "Claude model to use", "claude-opus-4-6")
-  .parse();
+  .option("--model <model>", "Claude model to use", "claude-opus-4-6");
+
+if (process.argv.length <= 2) { program.outputHelp(); process.exit(0); }
+program.parse();
 
 const opts = program.opts<{
   targetMinutes?: string;

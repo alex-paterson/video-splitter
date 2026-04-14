@@ -34,8 +34,10 @@ program
   .option("--no-diarize", "Disable speaker diarization (single speaker)")
   .option("--model <model>", "Whisper model", "whisper-1")
   .option("--resume", "Resume a partial transcript (skip already-transcribed chunks)")
-  .option("--no-pre-extract", "Skip full audio pre-extraction (saves disk, slower for large files)")
-  .parse();
+  .option("--no-pre-extract", "Skip full audio pre-extraction (saves disk, slower for large files)");
+
+if (process.argv.length <= 2) { program.outputHelp(); process.exit(0); }
+program.parse();
 
 const opts = program.opts<{
   chunkMinutes: string;

@@ -9,7 +9,8 @@
     "find-segment": "tsx src/find-segment.ts",
     "render-segment": "tsx src/render-segment.ts",
     "distill": "tsx src/distill.ts",
-    "topic-cut": "tsx src/topic-cut.ts"
+    "topic-cut": "tsx src/topic-cut.ts",
+    "help": "tsx src/help.ts"
   },
   "bin": {
     "silence-cut": "./src/silence-cut.ts",

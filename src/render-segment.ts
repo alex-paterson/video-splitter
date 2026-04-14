@@ -40,8 +40,10 @@ program
   .option("--format <ext>", "Output container format", "mp4")
   .option("--output <path>", "Output file path")
   .option("--threads <n>", "ffmpeg thread count (0 = auto)", "0")
-  .option("--hw-accel <api>", "Hardware acceleration: nvenc | vaapi | videotoolbox")
-  .parse();
+  .option("--hw-accel <api>", "Hardware acceleration: nvenc | vaapi | videotoolbox");
+
+if (process.argv.length <= 2) { program.outputHelp(); process.exit(0); }
+program.parse();
 
 const opts = program.opts<{
   aspect: string;

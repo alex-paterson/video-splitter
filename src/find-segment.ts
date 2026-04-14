@@ -28,8 +28,10 @@ program
   .option("--min-speakers <n>", "Minimum number of speakers that must appear", "1")
   .option("--count <n>", "Number of candidate segments to return", "1")
   .option("--output <path>", "Write .segment.json to this path (default: stdout)")
-  .option("--model <model>", "Claude model to use", "claude-opus-4-6")
-  .parse();
+  .option("--model <model>", "Claude model to use", "claude-opus-4-6");
+
+if (process.argv.length <= 2) { program.outputHelp(); process.exit(0); }
+program.parse();
 
 const opts = program.opts<{
   duration: string;
