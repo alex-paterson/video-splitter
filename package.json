@@ -8,14 +8,16 @@
     "transcribe": "tsx src/transcribe.ts",
     "find-segment": "tsx src/find-segment.ts",
     "render-segment": "tsx src/render-segment.ts",
-    "distill": "tsx src/distill.ts"
+    "distill": "tsx src/distill.ts",
+    "topic-cut": "tsx src/topic-cut.ts"
   },
   "bin": {
     "silence-cut": "./src/silence-cut.ts",
     "transcribe": "./src/transcribe.ts",
     "find-segment": "./src/find-segment.ts",
     "render-segment": "./src/render-segment.ts",
-    "distill": "./src/distill.ts"
+    "distill": "./src/distill.ts",
+    "topic-cut": "./src/topic-cut.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

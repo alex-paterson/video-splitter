@@ -50,11 +50,13 @@ export const CompilationClipSchema = z.object({
   start_s: z.number(),
   end_s: z.number(),
   summary: z.string().optional(),
+  transcript: z.array(TranscriptSegmentSchema).optional(),
 });
 
 export const CompilationSchema = z.object({
   source: z.string(),
   topic: z.string(),
+  story: z.string().optional(),
   clips: z.array(CompilationClipSchema),
 });
 
