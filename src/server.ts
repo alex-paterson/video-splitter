@@ -172,8 +172,8 @@ const server = http.createServer(async (req, res) => {
   res.end(JSON.stringify({ error: "not found" }));
 });
 
-server.listen(PORT, () => {
-  process.stderr.write(`server listening on http://localhost:${PORT}\n`);
+server.listen(PORT, "0.0.0.0", () => {
+  process.stderr.write(`server listening on http://0.0.0.0:${PORT}\n`);
   process.stderr.write(`  POST /run    { prompt }\n`);
   process.stderr.write(`  GET  /events (SSE)\n`);
 });
