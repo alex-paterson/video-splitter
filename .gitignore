@@ -1,0 +1,39 @@
+# Environment — never commit real keys
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+
+# TypeScript build output
+dist/
+*.js.map
+
+# Transcripts, segments, and rendered output (usually large or sensitive)
+*.transcript.json
+*.segment.json
+*.cut.mkv
+*.cut.mp4
+
+# Test / scratch video files
+*.mkv
+*.mp4
+*.mov
+*.avi
+*.webm
+
+# Temp files written by tools
+/tmp/vsp-*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
