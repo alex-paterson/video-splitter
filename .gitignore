@@ -34,6 +34,9 @@ dist/
 .DS_Store
 Thumbs.db
 
+# Orchestrator self-memory
+.memory.md
+
 # Logs
 *.log
 npm-debug.log*

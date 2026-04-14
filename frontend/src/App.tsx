@@ -10,8 +10,32 @@ type AgentEvent = {
 export function App() {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [status, setStatus] = useState<"idle" | "connecting" | "open" | "closed" | "error">("idle");
+  const [prompt, setPrompt] = useState("");
+  const [running, setRunning] = useState(false);
+  const [lastRunId, setLastRunId] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const runPrompt = async () => {
+    if (!prompt.trim() || running) return;
+    setRunning(true);
+    try {
+      const r = await fetch("/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: prompt.trim() }),
+      });
+      const j = await r.json();
+      if (j.run_id) setLastRunId(j.run_id);
+    } catch (e) {
+      setEvents((prev) => [
+        ...prev,
+        { id: Date.now(), type: "error", data: String(e), at: Date.now() },
+      ]);
+    } finally {
+      setRunning(false);
+    }
+  };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -21,7 +45,7 @@ export function App() {
     esRef.current?.close();
     setEvents([]);
     setStatus("connecting");
-    const es = new EventSource("/stream");
+    const es = new EventSource("/events");
     esRef.current = es;
     let counter = 0;
     es.onopen = () => setStatus("open");
@@ -70,6 +94,33 @@ export function App() {
       </header>
 
       <main className="mx-auto max-w-3xl px-6 py-6">
+        <div className="mb-6 rounded-lg border border-neutral-800 bg-neutral-900 p-3">
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                runPrompt();
+              }
+            }}
+            placeholder='e.g. "make me 2 shorts from /home/alex/OBS/foo.mkv, max 60s"'
+            rows={3}
+            className="w-full resize-y rounded-md bg-neutral-950 px-3 py-2 font-mono text-sm text-neutral-100 outline-none ring-1 ring-neutral-800 focus:ring-emerald-600"
+          />
+          <div className="mt-2 flex items-center justify-between">
+            <span className="font-mono text-xs text-neutral-500">
+              {lastRunId ? `last run_id: ${lastRunId}` : "⌘/Ctrl+Enter to run"}
+            </span>
+            <button
+              onClick={runPrompt}
+              disabled={running || !prompt.trim()}
+              className="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-neutral-700"
+            >
+              {running ? "Submitting…" : "Run"}
+            </button>
+          </div>
+        </div>
         {events.length === 0 ? (
           <div className="rounded-lg border border-dashed border-neutral-800 p-10 text-center text-sm text-neutral-500">
             No events yet. Click Connect to stream from the agent.

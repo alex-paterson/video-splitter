@@ -56,7 +56,7 @@ export function makePlanAndRenderManyTool(compilationAgent: Agent) {
         : "";
       const maxHint =
         maxSeconds !== undefined
-          ? `\nHARD CEILING: pass maxSeconds=${maxSeconds} to topic_to_compilation. If the tool output starts with DISCARDED:, your final answer is exactly that DISCARDED line.`
+          ? `\nMAX SECONDS: ${maxSeconds}. Pass maxSeconds=${maxSeconds} to topic_to_compilation; if the plan is OVER_MAX, iterate with compilation_refine (up to 4×) until DURATION <= MAX. Render the latest version.`
           : "";
       const bleepHint = bleep || bleepWords
         ? `\nBLEEP: after silence-stripping, run transcript_to_bleep_plan and video_apply_bleep (mode=mute).${bleepWords ? ` Use these words: ${bleepWords}.` : " Use auto=true."}`

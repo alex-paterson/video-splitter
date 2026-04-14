@@ -40,7 +40,8 @@ program
   .option("--format <ext>", "Output container format", "mp4")
   .option("--output <path>", "Output file path")
   .option("--threads <n>", "ffmpeg thread count (0 = auto)", "0")
-  .option("--hw-accel <api>", "Hardware acceleration: nvenc | vaapi | videotoolbox");
+  .option("--hw-accel <api>", "Hardware acceleration: nvenc | vaapi | videotoolbox")
+  .option("--banner <png>", "Optional PNG overlaid at top-center, scaled to video width");
 
 if (process.argv.length <= 2) { program.outputHelp(); process.exit(0); }
 program.parse();
@@ -58,6 +59,7 @@ const opts = program.opts<{
   output?: string;
   threads: string;
   hwAccel?: string;
+  banner?: string;
 }>();
 
 const [inputArg, segmentArg] = program.args;
@@ -254,12 +256,23 @@ async function main() {
   const hwAccelInput = opts.hwAccel ? hwAccelArgs(opts.hwAccel, opts.codec) : null;
   const encoderName = hwAccelInput ? hwAccelInput.encoderName : opts.codec;
 
+  const bannerPath = opts.banner ? path.resolve(opts.banner) : null;
+  const filterArgs: string[] = bannerPath
+    ? [
+        "-filter_complex",
+        `[0:v]${vfFilter}[vbase];[1:v]scale=${outW}:-1[bnr];[vbase][bnr]overlay=(main_w-overlay_w)/2:0[vout]`,
+        "-map", "[vout]",
+        "-map", "0:a?",
+      ]
+    : ["-vf", vfFilter];
+
   const ffmpegArgs: string[] = [
     ...(hwAccelInput?.inputArgs ?? []),
     "-ss", String(segment.start_s),
     "-t", String(segDuration),
     "-i", inputPath,
-    "-vf", vfFilter,
+    ...(bannerPath ? ["-i", bannerPath] : []),
+    ...filterArgs,
     "-c:v", encoderName,
     "-crf", opts.crf,
     "-preset", opts.preset,
@@ -272,6 +285,11 @@ async function main() {
   ];
 
   process.stderr.write(`Encoding: ${outputPath}\n`);
+  process.stderr.write(`Banner: ${bannerPath ?? "(none)"}\n`);
+  if (bannerPath && !fs.existsSync(bannerPath)) {
+    console.error(`Error: banner PNG not found: ${bannerPath}`);
+    process.exit(1);
+  }
   const progress = new ProgressReporter();
 
   await runFfmpeg(

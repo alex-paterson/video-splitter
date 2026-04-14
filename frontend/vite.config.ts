@@ -7,8 +7,12 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/stream": {
-        target: "http://localhost:3001",
+      "/events": {
+        target: "http://localhost:8787",
+        changeOrigin: true,
+      },
+      "/run": {
+        target: "http://localhost:8787",
         changeOrigin: true,
       },
     },

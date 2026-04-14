@@ -69,7 +69,7 @@ Source duration: ${(transcript.duration_s / 60).toFixed(1)} minutes${targetLine}
 
 TASK:
 1. Read the full transcript and identify the overarching narrative or the most interesting through-line.
-2. Select the segments to KEEP — meaningful content, key moments, discoveries, funny exchanges, important decisions.
+2. Select the segments to KEEP — meaningful content, key moments, discoveries, funny exchanges (on topic), important decisions.
 3. REMOVE: silence, filler, repeated attempts with no new information, off-topic side conversations, long pauses.
 4. The kept segments can be non-contiguous — they will be stitched together in order.
 5. Each kept segment's start_s and end_s MUST exactly match a boundary from the transcript below (no mid-sentence cuts).

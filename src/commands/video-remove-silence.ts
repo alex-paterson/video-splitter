@@ -30,7 +30,7 @@ program
   .option("--min-silence <s>", "Minimum silence duration to cut (seconds)", "0.5")
   .option("--pad <s>", "Seconds of silence padding to keep at each boundary", "0.1")
   .option("--preview", "Print detected silence intervals without writing output")
-  .option("--format <ext>", "Output container format", "mkv")
+  .option("--format <ext>", "Output container format (mp4 default; pass mkv to preserve input container)", "mp4")
   .option("--threads <n>", "ffmpeg thread count (0 = auto)", "0")
   .option("--reencode", "Re-encode using filter_complex trim (frame-accurate, no audio repeats; use on already-encoded clips)")
   .option("--crf <n>", "CRF quality when --reencode is set (default: 18)", "18")

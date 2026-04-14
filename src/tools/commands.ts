@@ -58,7 +58,39 @@ export const topicToCompilation = cliTool({
     topic: z.string().describe("Path to .topic.json"),
     transcript: z.string().optional(),
     source: z.string().optional(),
-    maxSeconds: z.number().optional().describe("Maximum allowed total clip duration; plan is discarded if exceeded"),
+    maxSeconds: z.number().optional().describe("Soft ceiling hinted to the LLM. If exceeded, stderr reports OVER_MAX — call compilation_refine to iterate."),
+    output: z.string().optional(),
+  }),
+});
+
+export const topicToBanner = cliTool({
+  name: "topic_to_banner",
+  description:
+    "Generate a transparent PNG banner (3-5 word headline) for a topic via the OpenAI images API. Pass the resulting path as `banner` to compilation_render or segment_render to overlay it at top-center.",
+  script: "src/commands/topic-to-banner.ts",
+  positional: [],
+  input: z.object({
+    topic: z.string().describe("Short topic phrase (3-5 words; longer auto-trimmed). The subject anchor."),
+    description: z
+      .string()
+      .describe(
+        "Longer summary/story of what actually happens in this compilation or segment. Pulled from the .topic.json 'story' field, the .compilation.json 'story', or the .segment.json 'rationale'. Used to ground the illustration in real specifics."
+      ),
+    output: z.string().describe("Output PNG path"),
+    width: z.number().optional(),
+    style: z.string().optional(),
+  }),
+});
+
+export const compilationRefine = cliTool({
+  name: "compilation_refine",
+  description:
+    "Trim an existing .compilation.json to fit under maxSeconds by dropping/shortening least-essential clips. Writes the next version (.compilation.2.json, .3.json, …). Stderr reports `DURATION: Ns MAX: Ms` and `OVER_MAX: …` if further refinement is still needed. Iterate by calling again on the new path.",
+  script: "src/commands/compilation-refine.ts",
+  positional: ["compilation"],
+  input: z.object({
+    compilation: z.string().describe("Path to any .compilation[.N].json"),
+    maxSeconds: z.number().describe("Hard ceiling in seconds"),
     output: z.string().optional(),
   }),
 });
@@ -73,6 +105,8 @@ export const compilationRender = cliTool({
     compilation: z.string().describe("Path to .compilation.json"),
     source: z.string().optional().describe("Override source video path (must be the ORIGINAL MKV)"),
     aspect: z.string().optional(),
+    resolution: z.string().optional().describe("Override output WxH, e.g. 540x960 for half-res"),
+    preset: z.string().optional().describe("ffmpeg preset (ultrafast|fast|medium|slow)"),
     output: z.string().optional(),
   }),
 });
@@ -97,13 +131,17 @@ export const transcriptFindSegment = cliTool({
 
 export const segmentRender = cliTool({
   name: "segment_render",
-  description: "Render a single .segment.json to a cropped/reframed video clip.",
+  description: "Render a single .segment.json to a cropped/reframed video clip. Supports hwAccel (nvenc|vaapi|videotoolbox), resolution (e.g. 540x960 for half-res), and preset for fast encodes.",
   script: "src/commands/segment-render.ts",
   positional: ["input", "segment"],
   input: z.object({
     input: z.string().describe("Source video (original MKV)"),
     segment: z.string().describe("Path to .segment.json"),
     aspect: z.string().optional(),
+    resolution: z.string().optional().describe("Override output WxH, e.g. 540x960 for half-res"),
+    preset: z.string().optional().describe("ffmpeg preset (ultrafast|fast|medium|slow)"),
+    hwAccel: z.string().optional().describe("nvenc | vaapi | videotoolbox"),
+    banner: z.string().optional().describe("Optional PNG overlaid at top-center of the output, scaled to video width"),
     output: z.string().optional(),
   }),
 });

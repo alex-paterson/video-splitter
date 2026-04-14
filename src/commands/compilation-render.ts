@@ -37,7 +37,8 @@ program
   .option("--output <path>", "Output video file path")
   .option("--crf <n>", "Output CRF quality", "18")
   .option("--preset <preset>", "ffmpeg encoding preset", "medium")
-  .option("--threads <n>", "ffmpeg thread count (0 = auto)", "0");
+  .option("--threads <n>", "ffmpeg thread count (0 = auto)", "0")
+  .option("--banner <png>", "Optional PNG overlaid at top-center, scaled to video width");
 
 if (process.argv.length <= 2) { program.outputHelp(); process.exit(0); }
 program.parse();
@@ -50,6 +51,7 @@ const opts = program.opts<{
   crf: string;
   preset: string;
   threads: string;
+  banner?: string;
 }>();
 
 const [compilationArg] = program.args;
@@ -149,9 +151,14 @@ async function main() {
     );
   }
   const concatInputs = clips.map((_, i) => `[v${i}][a${i}]`).join("");
+  const vconcat = opts.banner ? "vcat" : "vout";
   filterParts.push(
-    `${concatInputs}concat=n=${clips.length}:v=1:a=1[vout][aout]`
+    `${concatInputs}concat=n=${clips.length}:v=1:a=1[${vconcat}][aout]`
   );
+  if (opts.banner) {
+    filterParts.push(`[1:v]scale=${outW}:-1[bnr]`);
+    filterParts.push(`[vcat][bnr]overlay=(main_w-overlay_w)/2:0[vout]`);
+  }
 
   const compBase = path.basename(compilationPath).replace(/\.compilation\.json$/, "");
   const outDir = path.dirname(compilationPath);
@@ -161,10 +168,17 @@ async function main() {
 
   const progress = new ProgressReporter();
   process.stderr.write(`Rendering: ${outputPath}\n`);
+  process.stderr.write(`Banner: ${opts.banner ? path.resolve(opts.banner) : "(none)"}\n`);
+  if (opts.banner && !fs.existsSync(path.resolve(opts.banner))) {
+    console.error(`Error: banner PNG not found: ${path.resolve(opts.banner)}`);
+    process.exit(1);
+  }
 
+  const bannerArgs = opts.banner ? ["-i", path.resolve(opts.banner)] : [];
   await runFfmpeg(
     [
       "-i", sourcePath,
+      ...bannerArgs,
       "-filter_complex", filterParts.join(";"),
       "-map", "[vout]",
       "-map", "[aout]",

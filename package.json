@@ -14,10 +14,14 @@
     "distillation-render": "tsx src/commands/distillation-render.ts",
     "transcript-to-topic": "tsx src/commands/transcript-to-topic.ts",
     "topic-to-compilation": "tsx src/commands/topic-to-compilation.ts",
+    "compilation-refine": "tsx src/commands/compilation-refine.ts",
     "compilation-render": "tsx src/commands/compilation-render.ts",
+    "topic-to-banner": "tsx src/commands/topic-to-banner.ts",
     "transcript-to-bleep-plan": "tsx src/commands/transcript-to-bleep-plan.ts",
     "video-apply-bleep": "tsx src/commands/video-apply-bleep.ts",
     "server": "tsx src/server.ts",
+    "frontend": "npm --prefix frontend run dev",
+    "dev": "concurrently -n server,frontend -c cyan,magenta \"npm run server\" \"npm run frontend\"",
     "help": "tsx src/commands/help.ts"
   },
   "bin": {
@@ -30,7 +34,9 @@
     "distillation-render": "./src/commands/distillation-render.ts",
     "transcript-to-topic": "./src/commands/transcript-to-topic.ts",
     "topic-to-compilation": "./src/commands/topic-to-compilation.ts",
+    "compilation-refine": "./src/commands/compilation-refine.ts",
     "compilation-render": "./src/commands/compilation-render.ts",
+    "topic-to-banner": "./src/commands/topic-to-banner.ts",
     "transcript-to-bleep-plan": "./src/commands/transcript-to-bleep-plan.ts",
     "video-apply-bleep": "./src/commands/video-apply-bleep.ts"
   },
@@ -47,6 +53,7 @@
   "devDependencies": {
     "@types/fluent-ffmpeg": "^2.1.27",
     "@types/node": "^22.14.0",
+    "concurrently": "^9.2.1",
     "tsx": "^4.19.3",
     "typescript": "^5.8.3"
   }

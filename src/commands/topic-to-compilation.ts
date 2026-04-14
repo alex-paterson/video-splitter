@@ -234,23 +234,6 @@ async function main() {
     opts.output ?? path.join(outDir, `${topicBase}.compilation.json`)
   );
 
-  if (maxSeconds !== undefined && totalDuration > maxSeconds) {
-    const rejectedPath = compilationPath.replace(/\.compilation\.json$/, ".rejected.json");
-    fs.writeFileSync(
-      rejectedPath,
-      JSON.stringify(
-        { reason: "too_long", duration_s: totalDuration, max_seconds: maxSeconds },
-        null,
-        2
-      )
-    );
-    process.stderr.write(
-      `DISCARDED: too long (${totalDuration.toFixed(1)}s > ${maxSeconds}s)\n`
-    );
-    process.stderr.write(`Wrote rejection: ${rejectedPath}\n`);
-    process.exit(2);
-  }
-
   saveCompilation(compilationPath, {
     source: sourcePath,
     topic: topic.topic,
@@ -263,6 +246,17 @@ async function main() {
     })),
   });
   process.stderr.write(`\nSaved: ${compilationPath}\n`);
+  process.stderr.write(
+    `DURATION: ${totalDuration.toFixed(1)}s` +
+      (maxSeconds !== undefined ? ` MAX: ${maxSeconds}s` : "") +
+      "\n"
+  );
+  if (maxSeconds !== undefined && totalDuration > maxSeconds) {
+    const over = totalDuration - maxSeconds;
+    process.stderr.write(
+      `OVER_MAX: current=${totalDuration.toFixed(1)}s max=${maxSeconds}s cut_at_least=${over.toFixed(1)}s — call compilation_refine on ${compilationPath}\n`
+    );
+  }
 }
 
 main().catch((err) => {

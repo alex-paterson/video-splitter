@@ -6,6 +6,7 @@ export type BusEventType =
   | "tool_start"
   | "tool_end"
   | "tool_output_line"
+  | "stdio"
   | "error";
 
 export interface BusEvent {

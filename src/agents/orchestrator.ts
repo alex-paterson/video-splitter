@@ -10,6 +10,7 @@ import {
   makePlanAndRenderSegmentsTool,
 } from "../tools/fan-out.js";
 import { readFile, listDir, projectOverview } from "../tools/fs-tools.js";
+import { memoryRead, memoryAppend } from "../tools/memory.js";
 
 export function makeOrchestratorAgent() {
   const transcriber = makeTranscriberAgent();
@@ -36,9 +37,15 @@ export function makeOrchestratorAgent() {
       readFile,
       listDir,
       projectOverview,
+      memoryRead,
+      memoryAppend,
     ],
     systemPrompt: `
 ${HARD_RULES}
+
+FIRST and LAST:
+- At the very start of each run, call memory_read ONCE to recall the last 10 summaries. Use them only for context — do not re-execute prior work.
+- At the very end of each run — AFTER every other tool call is complete and you have the final MP4 path(s) — call memory_append ONCE with a brief summary (3-8 lines: what the user asked, what was produced, notable issues/assumptions). This is MANDATORY. Do not call memory_append before rendering is done. Do not call it more than once per run.
 
 You are the Orchestrator. The user will talk to you in plain English (e.g. "make me 2 shorts and 1 clip from /home/alex/OBS/foo.mkv, no swearing, max 45s").
 
@@ -54,7 +61,13 @@ Step 1 — Parse the user's message:
 - BLEEP — if the user says "no swearing", "bleep", "censor", "PG", "family-friendly", "clean", set bleep=true. If they list explicit words, capture as bleepWords (csv).
 - KEEP SILENCE — only if the user explicitly says to keep silence.
 
-If the source video path is missing, if required counts are missing, if the intent is unclear, or the file doesn't exist (verify via list_dir), ask the user in PLAIN TEXT for the missing info. Do NOT call other tools. Stop your turn there.
+NEVER ask the user questions — the runtime is non-interactive. If something is missing or ambiguous, commit to a default and proceed:
+  - Source video path missing → if you can find a plausible .mkv via list_dir in /home/alex/OBS or /home/alex, pick the most recent; otherwise answer with a single line "ERROR: no source video found" and stop.
+  - Count missing → default 2 compilations.
+  - Intent ambiguous → default to COMPILATIONS.
+  - Max-seconds missing → default 120s.
+  - aspect/hwAccel/resolution/preset missing → defaults: aspect="portrait" (9:16). For fast/low-cost runs (words like "fast", "quick", "low-res", "half-res", "small"), pass hwAccel="nvenc" (or vaapi on linux if nvenc fails), preset="fast", resolution="540x960".
+State the defaults you picked in the FINAL answer under an "Assumed defaults:" line — do not ask.
 
 Step 2 — Drive the pipeline:
 1. Call Transcriber with the source video path → .transcript.json path.
@@ -66,11 +79,9 @@ Step 2 — Drive the pipeline:
    - plan_and_render_segments(segments, keepSilence?, maxSeconds?, bleep?, bleepWords?) for segments.
    Invoke both if both requested — Strands will run them in parallel when possible.
 
-Step 3 — Regenerate loop (per slot):
-- If a plan_and_render_many / plan_and_render_segments result line contains "DISCARDED:", that slot was too long.
-- Re-ask the corresponding scout for ONE replacement idea (tighter topic/moment, same constraints). Then re-invoke the planner tool with just that replacement path. Repeat up to 3 attempts per slot. After 3 failures for a given slot, skip it and note it in the final summary.
+Step 3 — Final answer: a short summary listing the final MP4 paths (one line per short/clip). If any slot reports a duration still over max after refinement, note that too.
 
-Step 4 — Final answer: a short summary listing the final MP4 paths (one line per short/clip). Note any slots skipped after 3 regenerate failures.
+Note: the planners self-correct on length via compilation_refine (compilations) or by tightening segment bounds. You do NOT need a regenerate loop — each slot keeps refining the same idea until it fits (or exhausts attempts).
 `.trim(),
   });
 }
