@@ -46,6 +46,25 @@ export function saveSegment(path: string, segment: Segment): void {
   fs.writeFileSync(path, JSON.stringify(segment, null, 2));
 }
 
+export const CompilationClipSchema = z.object({
+  start_s: z.number(),
+  end_s: z.number(),
+  summary: z.string().optional(),
+});
+
+export const CompilationSchema = z.object({
+  source: z.string(),
+  topic: z.string(),
+  clips: z.array(CompilationClipSchema),
+});
+
+export type CompilationClip = z.infer<typeof CompilationClipSchema>;
+export type Compilation = z.infer<typeof CompilationSchema>;
+
+export function saveCompilation(path: string, compilation: Compilation): void {
+  fs.writeFileSync(path, JSON.stringify(compilation, null, 2));
+}
+
 /** Format seconds as HH:MM:SS.mmm */
 export function formatTimestamp(s: number): string {
   const h = Math.floor(s / 3600);

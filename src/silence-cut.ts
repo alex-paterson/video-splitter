@@ -32,6 +32,9 @@ program
   .option("--preview", "Print detected silence intervals without writing output")
   .option("--format <ext>", "Output container format", "mkv")
   .option("--threads <n>", "ffmpeg thread count (0 = auto)", "0")
+  .option("--reencode", "Re-encode using filter_complex trim (frame-accurate, no audio repeats; use on already-encoded clips)")
+  .option("--crf <n>", "CRF quality when --reencode is set (default: 18)", "18")
+  .option("--preset <preset>", "Encoding preset when --reencode is set (default: medium)", "medium")
   .parse();
 
 const opts = program.opts<{
@@ -41,6 +44,9 @@ const opts = program.opts<{
   preview: boolean;
   format: string;
   threads: string;
+  reencode: boolean;
+  crf: string;
+  preset: string;
 }>();
 
 const [inputArg, outputArg] = program.args;
@@ -115,21 +121,60 @@ async function main() {
   const defaultOutput = deriveOutputPath(inputPath, ".cut", ext);
   const outputPath = path.resolve(outputArg ?? defaultOutput);
 
-  // Write concat demuxer file
-  const concatFile = writeConcatFile(inputPath, keepIntervals);
-  registerTmp(concatFile);
-
-  // Run ffmpeg concat
   process.stderr.write(`Writing output: ${outputPath}\n`);
-  const ffmpegArgs = [
-    "-f", "concat",
-    "-safe", "0",
-    "-i", concatFile,
-    "-c", "copy",
-    "-threads", opts.threads,
-    "-y",
-    outputPath,
-  ];
+
+  let ffmpegArgs: string[];
+
+  if (opts.reencode) {
+    // Frame-accurate re-encode via filter_complex trim.
+    // The concat demuxer seeks to inpoint by decoding a few pre-roll frames,
+    // which bleed into the output as audible repeats even when re-encoding.
+    // filter_complex atrim/trim is sample-accurate and avoids this entirely.
+    const filterParts: string[] = [];
+    for (let i = 0; i < keepIntervals.length; i++) {
+      const { start, end } = keepIntervals[i];
+      filterParts.push(
+        `[0:v]trim=start=${start.toFixed(6)}:end=${end.toFixed(6)},setpts=PTS-STARTPTS[v${i}]`
+      );
+      filterParts.push(
+        `[0:a]atrim=start=${start.toFixed(6)}:end=${end.toFixed(6)},asetpts=PTS-STARTPTS[a${i}]`
+      );
+    }
+    const concatInputs = keepIntervals.map((_, i) => `[v${i}][a${i}]`).join("");
+    filterParts.push(
+      `${concatInputs}concat=n=${keepIntervals.length}:v=1:a=1[vout][aout]`
+    );
+
+    ffmpegArgs = [
+      "-i", inputPath,
+      "-filter_complex", filterParts.join(";"),
+      "-map", "[vout]",
+      "-map", "[aout]",
+      "-c:v", "libx264",
+      "-crf", opts.crf,
+      "-preset", opts.preset,
+      "-c:a", "aac",
+      "-b:a", "192k",
+      "-movflags", "+faststart",
+      "-threads", opts.threads,
+      "-y",
+      outputPath,
+    ];
+  } else {
+    // Fast stream-copy via concat demuxer. Fine for large MKV distilling where
+    // re-encoding would be too slow. May produce audio glitches on short clips.
+    const concatFile = writeConcatFile(inputPath, keepIntervals);
+    registerTmp(concatFile);
+    ffmpegArgs = [
+      "-f", "concat",
+      "-safe", "0",
+      "-i", concatFile,
+      "-c", "copy",
+      "-threads", opts.threads,
+      "-y",
+      outputPath,
+    ];
+  }
 
   await runFfmpeg(
     ffmpegArgs,
