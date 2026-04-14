@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node:*)",
+      "Bash(npx tsx:*)",
+      "Bash(ffprobe -v quiet -show_format -print_format json \"/home/alex/OBS/2026-04-13 23-10-18.distilled.mp4\")",
+      "Bash(ffprobe -v quiet -show_format -print_format json \"/home/alex/OBS/2026-04-13 23-10-18.mkv\")",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)",
+      "Bash(git mv:*)",
+      "Bash(npm install:*)",
+      "Bash(git rm:*)",
+      "Bash(ls ~/OBS/*.transcript.json ~/OBS/*.mkv)",
+      "Bash(grep -oE \"\\(1\\\\\\\\.|2\\\\\\\\.|3\\\\\\\\.|4\\\\\\\\.\\)[^\\\\\"\\\\\\\\\\\\\\\\]{0,200}\" /home/alex/.claude/projects/-home-alex-Projects-video-splitter/e57b873c-26da-493f-ba1c-e4197d48cd89.jsonl)",
+      "Bash(grep -oE '\"content\":\"[^\"]{10,400}\"' /home/alex/.claude/projects/-home-alex-Projects-video-splitter/e57b873c-26da-493f-ba1c-e4197d48cd89.jsonl)",
+      "Bash(ffprobe:*)",
+      "Bash(grep -r \"export.*Model\" /home/alex/Projects/video-splitter/node_modules/@strands-agents/sdk/dist/src/models/*.d.ts)",
+      "Bash(ls -1 /home/alex/Projects/video-splitter/node_modules/@strands-agents/sdk/dist/src/models/*.d.ts)",
+      "Bash(xargs -I {} basename {})"
+    ]
+  }
+}

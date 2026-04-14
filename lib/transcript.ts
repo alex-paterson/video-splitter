@@ -46,6 +46,23 @@ export function saveSegment(path: string, segment: Segment): void {
   fs.writeFileSync(path, JSON.stringify(segment, null, 2));
 }
 
+export const TopicSchema = z.object({
+  transcript: z.string(),
+  topic: z.string(),
+  story: z.string(),
+});
+
+export type Topic = z.infer<typeof TopicSchema>;
+
+export function loadTopic(path: string): Topic {
+  const raw = JSON.parse(fs.readFileSync(path, "utf-8"));
+  return TopicSchema.parse(raw);
+}
+
+export function saveTopic(path: string, topic: Topic): void {
+  fs.writeFileSync(path, JSON.stringify(topic, null, 2));
+}
+
 export const CompilationClipSchema = z.object({
   start_s: z.number(),
   end_s: z.number(),
@@ -65,6 +82,36 @@ export type Compilation = z.infer<typeof CompilationSchema>;
 
 export function saveCompilation(path: string, compilation: Compilation): void {
   fs.writeFileSync(path, JSON.stringify(compilation, null, 2));
+}
+
+export function loadCompilation(path: string): Compilation {
+  const raw = JSON.parse(fs.readFileSync(path, "utf-8"));
+  return CompilationSchema.parse(raw);
+}
+
+export const DistillationKeepSchema = z.object({
+  start_s: z.number(),
+  end_s: z.number(),
+  reason: z.string(),
+});
+
+export const DistillationSchema = z.object({
+  source: z.string(),
+  narrative: z.string(),
+  focus: z.string().optional(),
+  keep: z.array(DistillationKeepSchema),
+});
+
+export type DistillationKeep = z.infer<typeof DistillationKeepSchema>;
+export type Distillation = z.infer<typeof DistillationSchema>;
+
+export function saveDistillation(path: string, distillation: Distillation): void {
+  fs.writeFileSync(path, JSON.stringify(distillation, null, 2));
+}
+
+export function loadDistillation(path: string): Distillation {
+  const raw = JSON.parse(fs.readFileSync(path, "utf-8"));
+  return DistillationSchema.parse(raw);
 }
 
 /** Format seconds as HH:MM:SS.mmm */

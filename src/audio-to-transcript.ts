@@ -1,16 +1,15 @@
 #!/usr/bin/env tsx
 /**
- * transcribe — Extract audio from a video and produce a multi-speaker
- * diarized transcript saved as a .transcript.json file.
+ * audio-to-transcript — Transcribe an audio file via Whisper with multi-speaker
+ * diarization, saved as a .transcript.json file.
  *
- * Usage: tsx src/transcribe.ts [options] <input> [output]
+ * Usage: tsx src/audio-to-transcript.ts [options] <audio> [output]
  */
 
 import "dotenv/config";
 import { Command } from "commander";
 import path from "path";
 import fs from "fs";
-import os from "os";
 import { spawn } from "child_process";
 import undici from "undici";
 import { ffprobe, tmpPath, registerTmp } from "../lib/ffmpeg.js";
@@ -24,76 +23,33 @@ import { ProgressReporter } from "../lib/progress.js";
 const program = new Command();
 
 program
-  .name("transcribe")
-  .description("Transcribe video audio with multi-speaker diarization")
-  .argument("<input>", "Input video file")
+  .name("audio-to-transcript")
+  .description("Transcribe an audio file with multi-speaker diarization")
+  .argument("<audio>", "Input audio file (mp3, wav, m4a, …)")
   .argument("[output]", "Output .transcript.json path")
+  .option("--source <path>", "Original source video to record in transcript (default: audio path)")
   .option("--chunk-minutes <n>", "Audio chunk size for API uploads (minutes)", "10")
   .option("--language <lang>", "ISO-639-1 language hint for Whisper")
   .option("--speakers <n>", "Expected number of speakers (hint)", "0")
   .option("--no-diarize", "Disable speaker diarization (single speaker)")
   .option("--model <model>", "Whisper model", "whisper-1")
-  .option("--resume", "Resume a partial transcript (skip already-transcribed chunks)")
-  .option("--no-pre-extract", "Skip full audio pre-extraction (saves disk, slower for large files)");
+  .option("--resume", "Resume a partial transcript (skip already-transcribed chunks)");
 
 if (process.argv.length <= 2) { program.outputHelp(); process.exit(0); }
 program.parse();
 
 const opts = program.opts<{
+  source?: string;
   chunkMinutes: string;
   language?: string;
   speakers: string;
   diarize: boolean;
   model: string;
   resume: boolean;
-  preExtract: boolean;
 }>();
 
 const [inputArg, outputArg] = program.args;
 
-// ─── Audio extraction ────────────────────────────────────────────────────────
-
-/**
- * Extract the entire audio track from a video to a 16kHz mono MP3.
- * This single pass is much faster than seeking into a large MKV per chunk.
- */
-function extractFullAudio(
-  inputPath: string,
-  outPath: string,
-  onProgress?: (line: string) => void
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const args = [
-      "-hide_banner",
-      "-i", inputPath,
-      "-vn",
-      "-ar", "16000",
-      "-ac", "1",
-      "-b:a", "64k",
-      "-f", "mp3",
-      "-y",
-      outPath,
-    ];
-
-    const proc = spawn("ffmpeg", args);
-    let stderr = "";
-    proc.stderr.on("data", (d: Buffer) => {
-      const text = d.toString();
-      stderr += text;
-      if (onProgress) text.split("\n").forEach((l) => l.trim() && onProgress(l));
-    });
-    proc.on("close", (code) => {
-      if (code !== 0) reject(new Error(`ffmpeg audio extract failed: ${stderr.slice(-1000)}`));
-      else resolve();
-    });
-    proc.on("error", reject);
-  });
-}
-
-/**
- * Split a chunk from an already-extracted MP3 file.
- * Fast — sequential read from a small file, no video demuxing.
- */
 function splitAudioChunk(
   audioPath: string,
   startSec: number,
@@ -111,7 +67,6 @@ function splitAudioChunk(
       "-y",
       outPath,
     ];
-
     const proc = spawn("ffmpeg", args);
     let stderr = "";
     proc.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
@@ -123,57 +78,12 @@ function splitAudioChunk(
   });
 }
 
-/**
- * Extract a single chunk of audio directly from the source video.
- * Used when --no-pre-extract is set.
- */
-function extractAudioChunk(
-  inputPath: string,
-  startSec: number,
-  durationSec: number,
-  outPath: string
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const args = [
-      "-hide_banner",
-      "-loglevel", "error",
-      "-ss", String(startSec),
-      "-t", String(durationSec),
-      "-i", inputPath,
-      "-vn",
-      "-ar", "16000",
-      "-ac", "1",
-      "-b:a", "64k",
-      "-f", "mp3",
-      "-y",
-      outPath,
-    ];
-
-    const proc = spawn("ffmpeg", args);
-    let stderr = "";
-    proc.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
-    proc.on("close", (code) => {
-      if (code !== 0) reject(new Error(`ffmpeg audio extract failed: ${stderr}`));
-      else resolve();
-    });
-    proc.on("error", reject);
-  });
-}
-
-// ─── Whisper transcription ───────────────────────────────────────────────────
-
 interface WhisperSegment {
   start: number;
   end: number;
   text: string;
 }
 
-/**
- * Upload an audio chunk to the OpenAI Whisper API using undici.
- * The OpenAI SDK uses node-fetch internally which masks API errors (quota,
- * auth) as generic "Connection error" / ECONNRESET. undici gives proper
- * HTTP status codes and error messages.
- */
 async function transcribeChunk(
   apiKey: string,
   audioPath: string,
@@ -214,22 +124,14 @@ async function transcribeChunk(
   }));
 }
 
-// ─── Diarization ─────────────────────────────────────────────────────────────
-
 interface DiarizedWindow {
   start: number;
   end: number;
   speaker: string;
 }
 
-/**
- * Heuristic diarization: group consecutive Whisper segments separated by
- * pauses > 0.5s into speaker turns, alternating speakers.
- * This is a simple fallback when no diarization backend is configured.
- */
 function heuristicDiarize(segments: WhisperSegment[]): DiarizedWindow[] {
   if (segments.length === 0) return [];
-
   const windows: DiarizedWindow[] = [];
   let currentSpeaker = "SPEAKER_00";
   let speakerIdx = 0;
@@ -249,13 +151,9 @@ function heuristicDiarize(segments: WhisperSegment[]): DiarizedWindow[] {
     windowEnd = segments[i].end;
   }
   windows.push({ start: windowStart, end: windowEnd, speaker: currentSpeaker });
-
   return windows;
 }
 
-/**
- * AssemblyAI diarization — uploads audio and polls for speaker labels.
- */
 async function assemblyAIDiarize(
   audioPath: string,
   speakersExpected: number
@@ -265,7 +163,6 @@ async function assemblyAIDiarize(
 
   const { default: fetch } = await import("node-fetch");
 
-  // Upload
   const uploadResp = await fetch("https://api.assemblyai.com/v2/upload", {
     method: "POST",
     headers: { authorization: apiKey, "content-type": "application/octet-stream" },
@@ -274,7 +171,6 @@ async function assemblyAIDiarize(
   if (!uploadResp.ok) throw new Error(`AssemblyAI upload failed: ${uploadResp.status}`);
   const { upload_url } = (await uploadResp.json()) as { upload_url: string };
 
-  // Submit
   const submitBody: Record<string, unknown> = {
     audio_url: upload_url,
     speaker_labels: true,
@@ -289,7 +185,6 @@ async function assemblyAIDiarize(
   if (!submitResp.ok) throw new Error(`AssemblyAI submit failed: ${submitResp.status}`);
   const { id } = (await submitResp.json()) as { id: string };
 
-  // Poll
   while (true) {
     await new Promise((r) => setTimeout(r, 3000));
     const pollResp = await fetch(`https://api.assemblyai.com/v2/transcript/${id}`, {
@@ -314,10 +209,6 @@ async function assemblyAIDiarize(
   }
 }
 
-/**
- * Assign a speaker label to each Whisper segment by finding the diarized
- * window with the most overlap.
- */
 function assignSpeakers(
   segments: WhisperSegment[],
   diarized: DiarizedWindow[]
@@ -325,7 +216,6 @@ function assignSpeakers(
   return segments.map((seg) => {
     let bestSpeaker = "SPEAKER_00";
     let bestOverlap = 0;
-
     for (const w of diarized) {
       const overlap = Math.min(seg.end, w.end) - Math.max(seg.start, w.start);
       if (overlap > bestOverlap) {
@@ -333,7 +223,6 @@ function assignSpeakers(
         bestSpeaker = w.speaker;
       }
     }
-
     return {
       start_s: seg.start,
       end_s: seg.end,
@@ -343,45 +232,37 @@ function assignSpeakers(
   });
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
-
 async function main() {
   if (!fs.existsSync(inputArg)) {
-    console.error(`Error: input file not found: ${inputArg}`);
+    console.error(`Error: audio file not found: ${inputArg}`);
     process.exit(1);
   }
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    console.error("Error: OPENAI_API_KEY environment variable not set");
+    console.error("Error: OPENAI_API_KEY not set");
     process.exit(1);
   }
 
-  const inputPath = path.resolve(inputArg);
+  const audioPath = path.resolve(inputArg);
   const chunkMinutes = parseFloat(opts.chunkMinutes);
   const chunkSecs = chunkMinutes * 60;
   const speakersHint = parseInt(opts.speakers);
   const diarizeBackend = process.env.DIARIZE_BACKEND ?? "whisper-heuristic";
+  const sourcePath = opts.source ? path.resolve(opts.source) : audioPath;
 
-  // Determine output path
-  const defaultOutput =
-    path.join(
-      path.dirname(inputPath),
-      path.basename(inputPath, path.extname(inputPath)) + ".transcript.json"
-    );
+  const base = path.basename(audioPath).replace(/\.audio\.mp3$/, "").replace(/\.[^.]+$/, "");
+  const defaultOutput = path.join(path.dirname(audioPath), base + ".transcript.json");
   const outputPath = path.resolve(outputArg ?? defaultOutput);
 
   const progress = new ProgressReporter();
-  process.stderr.write("Probing source file…\n");
-  const probe = await ffprobe(inputPath);
+  process.stderr.write("Probing audio…\n");
+  const probe = await ffprobe(audioPath);
   const duration = parseFloat(probe.format.duration);
-  const sizeMB = (parseInt(probe.format.size) / 1e6).toFixed(0);
-  process.stderr.write(`  Duration: ${duration.toFixed(1)}s  Size: ${sizeMB} MB\n`);
+  process.stderr.write(`  Duration: ${duration.toFixed(1)}s\n`);
 
-  // Load partial transcript if resuming
   let existingSegments: TranscriptSegment[] = [];
   let startChunk = 0;
-
   if (opts.resume && fs.existsSync(outputPath)) {
     const existing = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as Transcript;
     existingSegments = existing.segments;
@@ -392,48 +273,19 @@ async function main() {
     }
   }
 
-  // Pre-extract full audio to MP3 (one pass through the source file, then
-  // chunk splits are fast sequential reads — much faster for large MKV files).
-  let audioSource = inputPath;
-  let fullAudioFile: string | null = null;
-
-  if (opts.preExtract) {
-    fullAudioFile = tmpPath(".mp3");
-    registerTmp(fullAudioFile);
-    process.stderr.write("Extracting full audio track to MP3…\n");
-    await extractFullAudio(
-      inputPath,
-      fullAudioFile,
-      progress.ffmpegHandler(duration, "extracting")
-    );
-    progress.done("audio extracted");
-    const audioMB = (fs.statSync(fullAudioFile).size / 1e6).toFixed(1);
-    process.stderr.write(`  Audio: ${audioMB} MB\n`);
-    audioSource = fullAudioFile;
-  }
-
   const numChunks = Math.ceil(duration / chunkSecs);
   const allSegments: TranscriptSegment[] = [...existingSegments];
 
-  // Process each chunk
   for (let i = startChunk; i < numChunks; i++) {
     const chunkStart = i * chunkSecs;
     const chunkDur = Math.min(chunkSecs, duration - chunkStart);
     const chunkLabel = `Chunk ${i + 1}/${numChunks} (${chunkStart.toFixed(0)}s)`;
 
-    process.stderr.write(`\n${chunkLabel}: extracting audio…\n`);
-    const audioFile = tmpPath(".mp3");
-    registerTmp(audioFile);
+    process.stderr.write(`\n${chunkLabel}: splitting audio…\n`);
+    const chunkFile = tmpPath(".mp3");
+    registerTmp(chunkFile);
+    await splitAudioChunk(audioPath, chunkStart, chunkDur, chunkFile);
 
-    if (opts.preExtract) {
-      // Fast: split from already-extracted MP3
-      await splitAudioChunk(audioSource, chunkStart, chunkDur, audioFile);
-    } else {
-      // Seek directly into source (fine for small files or single chunks)
-      await extractAudioChunk(inputPath, chunkStart, chunkDur, audioFile);
-    }
-
-    // Transcribe via Whisper
     process.stderr.write(`${chunkLabel}: transcribing…\n`);
     let whisperSegments: WhisperSegment[] = [];
     let attempts = 0;
@@ -441,7 +293,7 @@ async function main() {
       try {
         whisperSegments = await transcribeChunk(
           apiKey,
-          audioFile,
+          chunkFile,
           opts.model,
           opts.language,
           chunkStart
@@ -456,9 +308,7 @@ async function main() {
       }
     }
 
-    // Diarize
     let chunkSegments: TranscriptSegment[];
-
     if (!opts.diarize) {
       chunkSegments = whisperSegments.map((s) => ({
         start_s: s.start,
@@ -468,46 +318,34 @@ async function main() {
       }));
     } else if (diarizeBackend === "assemblyai") {
       process.stderr.write(`${chunkLabel}: diarizing via AssemblyAI…\n`);
-      const diarized = await assemblyAIDiarize(audioFile, speakersHint);
+      const diarized = await assemblyAIDiarize(chunkFile, speakersHint);
       chunkSegments = assignSpeakers(whisperSegments, diarized);
     } else {
-      // whisper-heuristic fallback
       const diarized = heuristicDiarize(whisperSegments);
       chunkSegments = assignSpeakers(whisperSegments, diarized);
     }
 
     allSegments.push(...chunkSegments);
 
-    // Save incremental progress
     const speakers = [...new Set(allSegments.map((s) => s.speaker))].sort();
-    const partialTranscript: Transcript = {
-      source: inputPath,
+    saveTranscript(outputPath, {
+      source: sourcePath,
       duration_s: duration,
       speakers,
       segments: allSegments,
-    };
-    saveTranscript(outputPath, partialTranscript);
+    });
 
     progress.update((i + 1) / numChunks, `chunk ${i + 1}/${numChunks}`);
-
-    // Clean up chunk audio
-    try { fs.unlinkSync(audioFile); } catch {}
+    try { fs.unlinkSync(chunkFile); } catch {}
   }
 
   const speakers = [...new Set(allSegments.map((s) => s.speaker))].sort();
-  const transcript: Transcript = {
-    source: inputPath,
+  saveTranscript(outputPath, {
+    source: sourcePath,
     duration_s: duration,
     speakers,
     segments: allSegments,
-  };
-
-  saveTranscript(outputPath, transcript);
-
-  // Clean up full audio file now that all chunks are done
-  if (fullAudioFile) {
-    try { fs.unlinkSync(fullAudioFile); } catch {}
-  }
+  });
 
   progress.done();
   process.stderr.write(

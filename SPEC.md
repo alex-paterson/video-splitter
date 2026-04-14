@@ -9,10 +9,10 @@ A collection of standalone TypeScript CLI executables for processing large (60GB
 ```
 video-splitter/
 ├── src/
-│   ├── silence-cut.ts        # Remove silence from video
-│   ├── transcribe.ts         # Multi-speaker diarization + transcription
-│   ├── find-segment.ts       # LLM-assisted coherent segment detection
-│   └── render-segment.ts     # Render a segment in a target aspect ratio
+│   ├── video-remove-silence.ts        # Remove silence from video
+│   ├── video-to-transcript.ts         # Multi-speaker diarization + transcription
+│   ├── transcript-find-segment.ts       # LLM-assisted coherent segment detection
+│   └── segment-render.ts     # Render a segment in a target aspect ratio
 ├── lib/
 │   ├── ffmpeg.ts             # ffmpeg wrapper utilities
 │   ├── chunker.ts            # Large file streaming/chunking helpers
@@ -24,7 +24,7 @@ video-splitter/
 
 ### Shared data formats
 
-**Transcript file** (`.transcript.json`) — output of `transcribe`, input to `find-segment`:
+**Transcript file** (`.transcript.json`) — output of `video-to-transcript`, input to `transcript-find-segment`:
 
 ```json
 {
@@ -42,7 +42,7 @@ video-splitter/
 }
 ```
 
-**Segment file** (`.segment.json`) — output of `find-segment`, input to `render-segment`:
+**Segment file** (`.segment.json`) — output of `transcript-find-segment`, input to `segment-render`:
 
 ```json
 {
@@ -57,18 +57,18 @@ video-splitter/
 
 ---
 
-## Tool 1 — `silence-cut`
+## Tool 1 — `video-remove-silence`
 
 **Purpose:** Remove periods of silence from a video, producing a tighter cut. Designed to stream through 60GB+ files without loading them into memory.
 
-**Binary:** `npx ts-node src/silence-cut.ts`
+**Binary:** `npx ts-node src/video-remove-silence.ts`
 
 **Dependencies:** `ffmpeg` (system), `fluent-ffmpeg` (npm)
 
 ### CLI
 
 ```
-silence-cut [options] <input> [output]
+video-remove-silence [options] <input> [output]
 
 Arguments:
   input                  Path to input MKV (or any ffmpeg-supported format)
@@ -98,18 +98,18 @@ Options:
 
 ---
 
-## Tool 2 — `transcribe`
+## Tool 2 — `video-to-transcript`
 
 **Purpose:** Produce a multi-speaker diarized transcript of the video's audio track, saved as a `.transcript.json` file.
 
-**Binary:** `npx ts-node src/transcribe.ts`
+**Binary:** `npx ts-node src/video-to-transcript.ts`
 
 **Dependencies:** `ffmpeg` (system), `openai` (npm — Whisper API), `@anthropic-ai/sdk` optional post-processing
 
 ### CLI
 
 ```
-transcribe [options] <input> [output]
+video-to-transcript [options] <input> [output]
 
 Arguments:
   input                  Path to input MKV
@@ -145,18 +145,18 @@ PYANNOTE_ENDPOINT       URL for local pyannote sidecar (default: http://localhos
 
 ---
 
-## Tool 3 — `find-segment`
+## Tool 3 — `transcript-find-segment`
 
 **Purpose:** Use an LLM to analyze a transcript and identify a coherent, standalone video segment within a specified approximate duration.
 
-**Binary:** `npx ts-node src/find-segment.ts`
+**Binary:** `npx ts-node src/transcript-find-segment.ts`
 
 **Dependencies:** `@anthropic-ai/sdk` (npm)
 
 ### CLI
 
 ```
-find-segment [options] <transcript>
+transcript-find-segment [options] <transcript>
 
 Arguments:
   transcript             Path to .transcript.json file
@@ -200,18 +200,18 @@ ANTHROPIC_API_KEY       Required
 
 ---
 
-## Tool 4 — `render-segment`
+## Tool 4 — `segment-render`
 
 **Purpose:** Extract and render a video segment from the source MKV, reframed to a target aspect ratio using center-fill cropping.
 
-**Binary:** `npx ts-node src/render-segment.ts`
+**Binary:** `npx ts-node src/segment-render.ts`
 
 **Dependencies:** `ffmpeg` (system), `fluent-ffmpeg` (npm)
 
 ### CLI
 
 ```
-render-segment [options] <input> [segment]
+segment-render [options] <input> [segment]
 
 Arguments:
   input                  Path to source MKV
@@ -266,25 +266,25 @@ Named presets can be passed to `--aspect` instead of `W:H`.
 
 ```bash
 # 1. Remove silence
-silence-cut --noise-db -40 --min-silence 0.8 lecture.mkv lecture.cut.mkv
+video-remove-silence --noise-db -40 --min-silence 0.8 lecture.mkv lecture.cut.mkv
 
 # 2. Transcribe with diarization
-transcribe --chunk-minutes 15 --speakers 2 lecture.cut.mkv
+video-to-transcript --chunk-minutes 15 --speakers 2 lecture.cut.mkv
 
 # 3. Find a coherent 90-second segment on a topic
-find-segment --duration 90 --tolerance 20 --topic "introduction to neural networks" \
+transcript-find-segment --duration 90 --tolerance 20 --topic "introduction to neural networks" \
   lecture.cut.transcript.json > segment.json
 
 # 4. Render as 9:16 portrait video
-render-segment --aspect 9:16 --output clip.mp4 lecture.cut.mkv segment.json
+segment-render --aspect 9:16 --output clip.mp4 lecture.cut.mkv segment.json
 ```
 
 ### Stdin/stdout piping
 
-`find-segment` writes JSON to stdout by default; `render-segment` reads segment JSON from stdin if no file argument is given, enabling:
+`transcript-find-segment` writes JSON to stdout by default; `segment-render` reads segment JSON from stdin if no file argument is given, enabling:
 
 ```bash
-find-segment --duration 60 transcript.json | render-segment --aspect 1:1 source.mkv
+transcript-find-segment --duration 60 transcript.json | segment-render --aspect 1:1 source.mkv
 ```
 
 ---
@@ -303,10 +303,10 @@ find-segment --duration 60 transcript.json | render-segment --aspect 1:1 source.
 
 | Package              | Used by                 | Purpose                          |
 |----------------------|-------------------------|----------------------------------|
-| `fluent-ffmpeg`      | silence-cut, render-segment | ffmpeg process wrapper      |
-| `@ffprobe-installer/ffprobe` | render-segment  | Bundled ffprobe binary           |
-| `openai`             | transcribe              | Whisper transcription API        |
-| `@anthropic-ai/sdk`  | find-segment            | Claude segment detection         |
+| `fluent-ffmpeg`      | video-remove-silence, segment-render | ffmpeg process wrapper      |
+| `@ffprobe-installer/ffprobe` | segment-render  | Bundled ffprobe binary           |
+| `openai`             | video-to-transcript              | Whisper transcription API        |
+| `@anthropic-ai/sdk`  | transcript-find-segment            | Claude segment detection         |
 | `commander`          | all                     | CLI argument parsing             |
 | `zod`                | all                     | Runtime schema validation        |
 | `tsx` / `ts-node`    | all                     | TypeScript execution             |

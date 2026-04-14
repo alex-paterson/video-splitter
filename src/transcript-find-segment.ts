@@ -1,9 +1,9 @@
 #!/usr/bin/env tsx
 /**
- * find-segment — Use Claude to identify a coherent, standalone video segment
+ * transcript-find-segment — Use Claude to identify a coherent, standalone video segment
  * from a diarized transcript.
  *
- * Usage: tsx src/find-segment.ts [options] <transcript>
+ * Usage: tsx src/transcript-find-segment.ts [options] <transcript>
  * Output: .segment.json to --output or stdout
  */
 
@@ -18,7 +18,7 @@ import { z } from "zod";
 const program = new Command();
 
 program
-  .name("find-segment")
+  .name("transcript-find-segment")
   .description("Use an LLM to find a coherent standalone video segment in a transcript")
   .argument("<transcript>", "Path to .transcript.json file")
   .option("--duration <s>", "Target segment duration in seconds", "60")

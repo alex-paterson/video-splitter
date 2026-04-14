@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 /**
- * silence-cut — Remove silent intervals from a video file.
+ * video-remove-silence — Remove silent intervals from a video file.
  *
- * Usage: tsx src/silence-cut.ts [options] <input> [output]
+ * Usage: tsx src/video-remove-silence.ts [options] <input> [output]
  */
 
 import "dotenv/config";
@@ -22,7 +22,7 @@ import { ProgressReporter } from "../lib/progress.js";
 const program = new Command();
 
 program
-  .name("silence-cut")
+  .name("video-remove-silence")
   .description("Remove silent intervals from a video file")
   .argument("<input>", "Input video file (MKV or any ffmpeg-supported format)")
   .argument("[output]", "Output file path")
@@ -187,6 +187,34 @@ async function main() {
   process.stderr.write(
     `Done. Output: ${outputPath}  (${outSize} MB, ${totalKept.toFixed(1)}s)\n`
   );
+
+  // Debug dump: detected silence + kept intervals
+  const silencePath = deriveOutputPath(inputPath, ".silence", ".json");
+  fs.writeFileSync(
+    silencePath,
+    JSON.stringify(
+      {
+        source: inputPath,
+        duration_s: duration,
+        noise_db: noiseDb,
+        min_silence_s: minSilence,
+        pad_s: pad,
+        silence: silenceIntervals.map((iv) => ({
+          start_s: iv.start,
+          end_s: iv.end,
+          duration_s: iv.end - iv.start,
+        })),
+        keep: keepIntervals.map((iv) => ({
+          start_s: iv.start,
+          end_s: iv.end,
+          duration_s: iv.end - iv.start,
+        })),
+      },
+      null,
+      2
+    )
+  );
+  process.stderr.write(`Debug: ${silencePath}\n`);
 }
 
 function invertIntervals(

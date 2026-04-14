@@ -6,10 +6,18 @@ TypeScript CLI tools for processing large (60GB+) MKV video files. Built on ffmp
 
 | Tool | What it does |
 |---|---|
-| `silence-cut` | Remove silent intervals — fast stream copy, no re-encode |
-| `transcribe` | Multi-speaker diarized transcript via Whisper → `.transcript.json` |
-| `find-segment` | Claude finds a coherent standalone segment → `.segment.json` |
-| `render-segment` | Extract + reframe to any aspect ratio with cover-fill crop |
+| `video-remove-silence` | Remove silent intervals — fast stream copy, no re-encode |
+| `video-to-audio` | Extract a video's audio track to 16kHz mono MP3 |
+| `audio-to-transcript` | Multi-speaker diarized transcript via Whisper → `.transcript.json` |
+| `transcript-find-segment` | Claude finds a coherent standalone segment → `.segment.json` |
+| `segment-render` | Extract + reframe to any aspect ratio with cover-fill crop |
+| `transcript-to-distillation-plan` | Plan a narrative distillation → `.distillation.json` (keep intervals) |
+| `distillation-render` | Render a `.distillation.json` plan to a condensed video |
+| `transcript-to-topic` | Derive a topic's narrative from a transcript → `.topic.json` |
+| `topic-to-compilation` | Filter a transcript by a topic story → `.compilation.json` plan |
+| `compilation-render` | Render a `.compilation.json` plan to a concatenated video |
+
+> **Always build compilations (and clips) from the original source MKV** — never from a distilled or silence-cut derivative. Whisper timestamps are accurate on originals because natural silences act as anchors; abrupt cuts in derivatives cause timestamp drift, and every downstream step (`transcript-find-segment`, `topic-to-compilation`, `segment-render`, `compilation-render`) expects offsets that match the original file. Distilled outputs are for watching, not for re-processing.
 
 ---
 
@@ -28,9 +36,9 @@ Install ffmpeg on macOS: `brew install ffmpeg`
 
 | Key | Tool | Where to get it |
 |---|---|---|
-| `OPENAI_API_KEY` | `transcribe` | platform.openai.com/api-keys |
-| `ANTHROPIC_API_KEY` | `find-segment` | console.anthropic.com/settings/keys |
-| `ASSEMBLYAI_API_KEY` | `transcribe` (optional, better diarization) | assemblyai.com/dashboard |
+| `OPENAI_API_KEY` | `video-to-transcript` | platform.openai.com/api-keys |
+| `ANTHROPIC_API_KEY` | `transcript-find-segment` | console.anthropic.com/settings/keys |
+| `ASSEMBLYAI_API_KEY` | `video-to-transcript` (optional, better diarization) | assemblyai.com/dashboard |
 
 ---
 
@@ -51,10 +59,10 @@ cp .env.example .env
 Copy `.env.example` to `.env` and set your keys:
 
 ```bash
-# Required for transcribe
+# Required for video-to-transcript
 OPENAI_API_KEY=sk-...
 
-# Required for find-segment
+# Required for transcript-find-segment
 ANTHROPIC_API_KEY=sk-ant-...
 
 # Diarization backend: whisper-heuristic (default) | assemblyai | pyannote-local
@@ -82,20 +90,20 @@ npx tsx src/<tool>.ts [options] <args>
 Or via npm scripts:
 
 ```bash
-npm run silence-cut -- [options] <args>
-npm run transcribe  -- [options] <args>
-npm run find-segment -- [options] <args>
-npm run render-segment -- [options] <args>
+npm run video-remove-silence -- [options] <args>
+npm run video-to-transcript  -- [options] <args>
+npm run transcript-find-segment -- [options] <args>
+npm run segment-render -- [options] <args>
 ```
 
 ---
 
-## silence-cut
+## video-remove-silence
 
 Remove silent intervals from a video. Uses ffmpeg's `silencedetect` filter then stream-copies the keep intervals — no re-encoding, works on 60GB+ files.
 
 ```
-silence-cut [options] <input> [output]
+video-remove-silence [options] <input> [output]
 ```
 
 | Option | Default | Description |
@@ -111,17 +119,17 @@ silence-cut [options] <input> [output]
 
 ```bash
 # Preview what silence would be cut
-npx tsx src/silence-cut.ts --preview lecture.mkv
+npx tsx src/video-remove-silence.ts --preview lecture.mkv
 
 # Cut silence with default settings
-npx tsx src/silence-cut.ts lecture.mkv
+npx tsx src/video-remove-silence.ts lecture.mkv
 # → lecture.cut.mkv
 
 # More aggressive cut, custom output path
-npx tsx src/silence-cut.ts --noise-db -40 --min-silence 0.8 lecture.mkv out/tight.mkv
+npx tsx src/video-remove-silence.ts --noise-db -40 --min-silence 0.8 lecture.mkv out/tight.mkv
 
 # Output as MP4
-npx tsx src/silence-cut.ts --format mp4 lecture.mkv
+npx tsx src/video-remove-silence.ts --format mp4 lecture.mkv
 ```
 
 ### Notes
@@ -132,12 +140,12 @@ npx tsx src/silence-cut.ts --format mp4 lecture.mkv
 
 ---
 
-## transcribe
+## video-to-transcript
 
 Extract audio from a video and produce a word-timed, multi-speaker diarized transcript using OpenAI Whisper.
 
 ```
-transcribe [options] <input> [output]
+video-to-transcript [options] <input> [output]
 ```
 
 | Option | Default | Description |
@@ -156,20 +164,20 @@ Output is a `.transcript.json` file alongside the input by default.
 
 ```bash
 # Basic transcription (whisper-heuristic diarization)
-npx tsx src/transcribe.ts lecture.mkv
+npx tsx src/video-to-transcript.ts lecture.mkv
 # → lecture.transcript.json
 
 # With AssemblyAI diarization (better accuracy, requires key)
-DIARIZE_BACKEND=assemblyai npx tsx src/transcribe.ts --speakers 2 lecture.mkv
+DIARIZE_BACKEND=assemblyai npx tsx src/video-to-transcript.ts --speakers 2 lecture.mkv
 
 # English, large chunks (fewer API calls for long files)
-npx tsx src/transcribe.ts --language en --chunk-minutes 20 lecture.mkv
+npx tsx src/video-to-transcript.ts --language en --chunk-minutes 20 lecture.mkv
 
 # Resume after an interrupted run
-npx tsx src/transcribe.ts --resume lecture.mkv
+npx tsx src/video-to-transcript.ts --resume lecture.mkv
 
 # No diarization, just transcript
-npx tsx src/transcribe.ts --no-diarize lecture.mkv
+npx tsx src/video-to-transcript.ts --no-diarize lecture.mkv
 ```
 
 ### Transcript format
@@ -214,12 +222,12 @@ docker run -p 8000:8000 pyannote/speaker-diarization
 
 ---
 
-## find-segment
+## transcript-find-segment
 
 Use Claude to analyze a transcript and identify the best coherent, standalone video segment at a target duration.
 
 ```
-find-segment [options] <transcript>
+transcript-find-segment [options] <transcript>
 ```
 
 | Option | Default | Description |
@@ -237,24 +245,24 @@ find-segment [options] <transcript>
 
 ```bash
 # Find a 60-second standalone segment, print to stdout
-npx tsx src/find-segment.ts lecture.transcript.json
+npx tsx src/transcript-find-segment.ts lecture.transcript.json
 
 # 90-second segment about a specific topic, save to file
-npx tsx src/find-segment.ts \
+npx tsx src/transcript-find-segment.ts \
   --duration 90 --tolerance 20 \
   --topic "introduction to neural networks" \
   --output segment.json \
   lecture.transcript.json
 
 # Get 3 candidates for manual review
-npx tsx src/find-segment.ts --count 3 --duration 120 lecture.transcript.json
+npx tsx src/transcript-find-segment.ts --count 3 --duration 120 lecture.transcript.json
 
 # Only consider one speaker
-npx tsx src/find-segment.ts --speaker SPEAKER_01 --duration 60 lecture.transcript.json
+npx tsx src/transcript-find-segment.ts --speaker SPEAKER_01 --duration 60 lecture.transcript.json
 
-# Pipe directly into render-segment
-npx tsx src/find-segment.ts --duration 90 lecture.transcript.json \
-  | npx tsx src/render-segment.ts --aspect portrait lecture.mkv
+# Pipe directly into segment-render
+npx tsx src/transcript-find-segment.ts --duration 90 lecture.transcript.json \
+  | npx tsx src/segment-render.ts --aspect portrait lecture.mkv
 ```
 
 ### Segment format
@@ -278,12 +286,12 @@ npx tsx src/find-segment.ts --duration 90 lecture.transcript.json \
 
 ---
 
-## render-segment
+## segment-render
 
 Extract a time range from the source video, crop to a target aspect ratio using cover-fill from center, and encode to a new file.
 
 ```
-render-segment [options] <input> [segment]
+segment-render [options] <input> [segment]
 ```
 
 The segment can be:
@@ -319,26 +327,26 @@ The segment can be:
 
 ```bash
 # 9:16 portrait from a segment file
-npx tsx src/render-segment.ts --aspect portrait lecture.mkv segment.json
+npx tsx src/segment-render.ts --aspect portrait lecture.mkv segment.json
 
 # Square clip with a specific output path
-npx tsx src/render-segment.ts --aspect square --output clip.mp4 lecture.mkv segment.json
+npx tsx src/segment-render.ts --aspect square --output clip.mp4 lecture.mkv segment.json
 
 # Letterbox instead of crop
-npx tsx src/render-segment.ts --aspect 9:16 --fit lecture.mkv segment.json
+npx tsx src/segment-render.ts --aspect 9:16 --fit lecture.mkv segment.json
 
 # Inline JSON segment
-npx tsx src/render-segment.ts --aspect landscape lecture.mkv \
+npx tsx src/segment-render.ts --aspect landscape lecture.mkv \
   '{"source":"lecture.mkv","start_s":60,"end_s":120,"title":"Test","rationale":"","speakers":[]}'
 
 # Hardware-accelerated encode (NVIDIA)
-npx tsx src/render-segment.ts --aspect portrait --hw-accel nvenc lecture.mkv segment.json
+npx tsx src/segment-render.ts --aspect portrait --hw-accel nvenc lecture.mkv segment.json
 
 # Hardware-accelerated encode (AMD/Intel on Linux)
-npx tsx src/render-segment.ts --aspect portrait --hw-accel vaapi lecture.mkv segment.json
+npx tsx src/segment-render.ts --aspect portrait --hw-accel vaapi lecture.mkv segment.json
 
 # Faster encode, slightly larger file
-npx tsx src/render-segment.ts --aspect portrait --preset fast --crf 22 lecture.mkv segment.json
+npx tsx src/segment-render.ts --aspect portrait --preset fast --crf 22 lecture.mkv segment.json
 ```
 
 ### Cover-fill crop explained
@@ -360,32 +368,48 @@ No black bars, no letterboxing — the frame fills the target completely.
 
 ---
 
-## Full pipeline
+## Pipelines
+
+All pipelines start from the **original** MKV. Do not transcribe or render from distilled/silence-cut derivatives — their timestamps don't align with the original source.
+
+### Single clip (9:16 portrait)
 
 ```bash
-# 1. Cut silence
-npx tsx src/silence-cut.ts --noise-db -35 lecture.mkv lecture.cut.mkv
-
-# 2. Transcribe with diarization
-npx tsx src/transcribe.ts --speakers 2 --chunk-minutes 15 lecture.cut.mkv
-
-# 3. Find a coherent 90-second segment
-npx tsx src/find-segment.ts \
-  --duration 90 --tolerance 20 \
-  --topic "your topic here" \
-  --output segment.json \
-  lecture.cut.transcript.json
-
-# 4. Render as 9:16 portrait
-npx tsx src/render-segment.ts --aspect portrait lecture.cut.mkv segment.json
+# 1. Extract audio from original
+npx tsx src/video-to-audio.ts lecture.mkv
+# 2. Transcribe
+npx tsx src/audio-to-transcript.ts --speakers 2 lecture.audio.mp3 --source lecture.mkv
+# 3. Find a 90-second segment
+npx tsx src/transcript-find-segment.ts --duration 90 --topic "your topic" \
+  --output segment.json lecture.transcript.json
+# 4. Render from the original
+npx tsx src/segment-render.ts --aspect portrait lecture.mkv segment.json
+# 5. Tighten by removing silence in the rendered clip
+npx tsx src/video-remove-silence.ts --reencode lecture_<start>-<end>.mp4
 ```
 
-### One-liner (steps 3 + 4 piped)
+### Topic compilation (stitched highlights from one video)
 
 ```bash
-npx tsx src/find-segment.ts --duration 90 lecture.cut.transcript.json \
-  | npx tsx src/render-segment.ts --aspect portrait lecture.cut.mkv
+# 1–2. Audio + transcript from original (as above)
+# 3. Derive a topic story
+npx tsx src/transcript-to-topic.ts --topic "bug discoveries" lecture.transcript.json
+# 4. Filter the transcript into a compilation plan
+npx tsx src/topic-to-compilation.ts lecture.bug-discoveries.topic.json
+# 5. Render the compilation from the ORIGINAL MKV
+npx tsx src/compilation-render.ts --aspect portrait lecture.bug-discoveries.compilation.json
 ```
+
+### Narrative distillation (whole-session condense, for reference viewing)
+
+```bash
+# 1–2. Audio + transcript from original
+# 3. Plan the distillation
+npx tsx src/transcript-to-distillation-plan.ts lecture.transcript.json
+# 4. Render
+npx tsx src/distillation-render.ts lecture.distillation.json
+```
+Distilled videos are for watching only — do not feed them back into the pipeline.
 
 ---
 
@@ -394,10 +418,10 @@ npx tsx src/find-segment.ts --duration 90 lecture.cut.transcript.json \
 ```
 video-splitter/
 ├── src/
-│   ├── silence-cut.ts       # Tool 1: silence removal
-│   ├── transcribe.ts        # Tool 2: Whisper transcription + diarization
-│   ├── find-segment.ts      # Tool 3: Claude segment detection
-│   └── render-segment.ts    # Tool 4: aspect-ratio crop + encode
+│   ├── video-remove-silence.ts       # Tool 1: silence removal
+│   ├── video-to-transcript.ts        # Tool 2: Whisper transcription + diarization
+│   ├── transcript-find-segment.ts      # Tool 3: Claude segment detection
+│   └── segment-render.ts    # Tool 4: aspect-ratio crop + encode
 ├── lib/
 │   ├── ffmpeg.ts            # ffprobe, silencedetect, runFfmpeg helpers
 │   ├── progress.ts          # ASCII progress bar
@@ -414,7 +438,7 @@ video-splitter/
 
 | Tool | Default output name |
 |---|---|
-| `silence-cut` | `<input>.cut.mkv` |
-| `transcribe` | `<input>.transcript.json` |
-| `find-segment` | stdout (use `--output` to save) |
-| `render-segment` | `<input>_<start>-<end>.mp4` |
+| `video-remove-silence` | `<input>.cut.mkv` |
+| `video-to-transcript` | `<input>.transcript.json` |
+| `transcript-find-segment` | stdout (use `--output` to save) |
+| `segment-render` | `<input>_<start>-<end>.mp4` |

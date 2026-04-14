@@ -1,10 +1,10 @@
 #!/usr/bin/env tsx
 /**
- * render-segment — Extract and render a video segment, reframed to a target
+ * segment-render — Extract and render a video segment, reframed to a target
  * aspect ratio using cover-fill center cropping.
  *
- * Usage: tsx src/render-segment.ts [options] <input> [segment]
- *        tsx src/render-segment.ts [options] <input>  (reads segment JSON from stdin)
+ * Usage: tsx src/segment-render.ts [options] <input> [segment]
+ *        tsx src/segment-render.ts [options] <input>  (reads segment JSON from stdin)
  */
 
 import "dotenv/config";
@@ -25,7 +25,7 @@ const ASPECT_PRESETS: Record<string, [number, number]> = {
 const program = new Command();
 
 program
-  .name("render-segment")
+  .name("segment-render")
   .description("Extract and render a video segment with cover-fill cropping")
   .argument("<input>", "Source video file")
   .argument("[segment]", "Path to .segment.json (or JSON string); reads stdin if omitted")
