@@ -5,8 +5,18 @@ import { z, ZodObject, ZodRawShape } from "zod";
 import { bus } from "../lib/event-bus.js";
 
 const liveProcs: Map<string, Set<ChildProcess>> = new Map();
+const cancelledRuns: Set<string> = new Set();
+
+export function isCancelled(runId: string | undefined): boolean {
+  return !!runId && cancelledRuns.has(runId);
+}
+
+export function clearCancelled(runId: string): void {
+  cancelledRuns.delete(runId);
+}
 
 export function killRun(runId: string): number {
+  cancelledRuns.add(runId);
   const set = liveProcs.get(runId);
   if (!set) return 0;
   let n = 0;
@@ -40,6 +50,11 @@ function camelToKebab(s: string): string {
 
 export function runCli(script: string, argv: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
+    const preRunId = bus.getCurrentRunId();
+    if (isCancelled(preRunId)) {
+      reject(new Error("RUN_CANCELLED: user cancelled this run"));
+      return;
+    }
     const startedAt = Date.now();
     bus.publish({ type: "tool_start", script, argv });
     const proc = spawn("npx", ["tsx", path.join(PROJECT_ROOT, script), ...argv], {

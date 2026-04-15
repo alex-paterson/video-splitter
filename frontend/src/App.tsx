@@ -56,6 +56,7 @@ export function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ run_id: activeRunId }),
       });
+      setActiveRunId(null);
     } catch (e) {
       setEvents((prev) => [
         ...prev,
@@ -218,21 +219,22 @@ export function App() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {activeRunId && (
+                  {activeRunId ? (
                     <button
                       onClick={cancelRun}
                       className="rounded-md bg-red-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-500"
                     >
                       Cancel
                     </button>
+                  ) : (
+                    <button
+                      onClick={runPrompt}
+                      disabled={running || !prompt.trim()}
+                      className="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-neutral-700"
+                    >
+                      {running ? "Submitting…" : "Run"}
+                    </button>
                   )}
-                  <button
-                    onClick={runPrompt}
-                    disabled={running || !prompt.trim()}
-                    className="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-neutral-700"
-                  >
-                    {running ? "Submitting…" : "Run"}
-                  </button>
                 </div>
               </div>
             </div>

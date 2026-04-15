@@ -5,8 +5,8 @@ import { readFile } from "../tools/fs-tools.js";
 
 export function makeSegmentScoutAgent() {
   return new Agent({
-    id: "segment_scout",
-    name: "SegmentScout",
+    id: "agent_segment_scout",
+    name: "SegmentScout (agent)",
     description:
       "Given a transcript path and a desired count N, brainstorms N distinct standalone moments and produces one .segment.json per moment (via transcript_find_segment with count=1 and varied topic hints). Returns the list of .segment.json paths.",
     model: buildModel(),

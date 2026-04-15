@@ -1,5 +1,28 @@
 import { Agent, tool } from "@strands-agents/sdk";
 import { z } from "zod";
+import { bus } from "../lib/event-bus.js";
+import { isCancelled } from "./cli-tool.js";
+
+async function invokeSubagent(agent: Agent, label: string, prompt: string): Promise<unknown> {
+  if (isCancelled(bus.getCurrentRunId())) throw new Error("RUN_CANCELLED");
+  const agentId = (agent as unknown as { id?: string }).id ?? "agent";
+  const startedAt = Date.now();
+  bus.publish({ type: "subagent_start", agent: agentId, label });
+  try {
+    const result = await agent.invoke(prompt);
+    bus.publish({ type: "subagent_end", agent: agentId, label, duration_ms: Date.now() - startedAt });
+    return result;
+  } catch (e) {
+    bus.publish({
+      type: "subagent_end",
+      agent: agentId,
+      label,
+      duration_ms: Date.now() - startedAt,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    throw e;
+  }
+}
 
 /**
  * Minimal promise-pool: runs `task(item)` across `items` with at most
@@ -33,7 +56,7 @@ async function pool<T, R>(
  */
 export function makeTopicScoutManyTool(topicScoutAgent: Agent) {
   return tool({
-    name: "topic_scout_many",
+    name: "agents_topic_scout_many",
     description:
       "Run TopicScout concurrently across several transcripts. For each transcript, scouts `countPerTranscript` topics and returns the resulting .topic.json paths grouped by input transcript. Prefer over calling TopicScout sequentially.",
     inputSchema: z.object({
@@ -55,8 +78,10 @@ export function makeTopicScoutManyTool(topicScoutAgent: Agent) {
     }) => {
       const cap = Math.max(1, Math.min(concurrency ?? 4, 8));
       const maxHint = maxSeconds !== undefined ? ` maxSeconds=${maxSeconds}` : "";
-      const runs = await pool(transcripts, cap, (t) =>
-        topicScoutAgent.invoke(
+      const runs = await pool(transcripts, cap, (t, i) =>
+        invokeSubagent(
+          topicScoutAgent,
+          `topic_scout[${i + 1}/${transcripts.length}] ${t}`,
           `Scout ${countPerTranscript} topic(s) from this transcript: ${t}${maxHint}`
         )
       );
@@ -82,7 +107,7 @@ export function makeTopicScoutManyTool(topicScoutAgent: Agent) {
  */
 export function makeSegmentScoutManyTool(segmentScoutAgent: Agent) {
   return tool({
-    name: "segment_scout_many",
+    name: "agents_segment_scout_many",
     description:
       "Run SegmentScout concurrently across several transcripts. For each transcript, scouts `countPerTranscript` segments and returns the resulting .segment.json paths grouped by input transcript.",
     inputSchema: z.object({
@@ -104,8 +129,10 @@ export function makeSegmentScoutManyTool(segmentScoutAgent: Agent) {
     }) => {
       const cap = Math.max(1, Math.min(concurrency ?? 4, 8));
       const maxHint = maxSeconds !== undefined ? ` maxSeconds=${maxSeconds}` : "";
-      const runs = await pool(transcripts, cap, (t) =>
-        segmentScoutAgent.invoke(
+      const runs = await pool(transcripts, cap, (t, i) =>
+        invokeSubagent(
+          segmentScoutAgent,
+          `segment_scout[${i + 1}/${transcripts.length}] ${t}`,
           `Scout ${countPerTranscript} segment(s) from this transcript: ${t}${maxHint}`
         )
       );
@@ -132,7 +159,7 @@ export function makeSegmentScoutManyTool(segmentScoutAgent: Agent) {
  */
 export function makeTranscribeManyTool(transcriberAgent: Agent) {
   return tool({
-    name: "transcribe_many",
+    name: "agents_transcribe_many",
     description:
       "Transcribe several source videos concurrently. Returns one .transcript.json path per input (or ERROR line), in input order. Prefer this over calling the Transcriber agent sequentially when you have >1 video.",
     inputSchema: z.object({
@@ -153,8 +180,12 @@ export function makeTranscribeManyTool(transcriberAgent: Agent) {
       concurrency?: number;
     }) => {
       const cap = Math.max(1, Math.min(concurrency ?? 4, 8));
-      const runs = await pool(sources, cap, (src) =>
-        transcriberAgent.invoke(`Transcribe this source video: ${src}`)
+      const runs = await pool(sources, cap, (src, i) =>
+        invokeSubagent(
+          transcriberAgent,
+          `transcribe[${i + 1}/${sources.length}] ${src}`,
+          `Transcribe this source video: ${src}`
+        )
       );
       return runs
         .map((r, i) => {
@@ -180,7 +211,7 @@ export function makeTranscribeManyTool(transcriberAgent: Agent) {
  */
 export function makePlanAndRenderManyTool(compilationAgent: Agent) {
   return tool({
-    name: "plan_and_render_many",
+    name: "agents_plan_and_render_many",
     description:
       "Run the CompilationPlanner concurrently across several .topic.json files. Given a list of topic paths, returns one final MP4 path (or DISCARDED line) per topic, in the same order. Use this instead of invoking compilation_planner sequentially when you have multiple topics to produce.",
     inputSchema: z.object({
@@ -241,8 +272,10 @@ export function makePlanAndRenderManyTool(compilationAgent: Agent) {
       const bannerHint = banner
         ? "\nBANNER: REQUIRED. Run topic_to_banner and pass banner=<png> to compilation_render. Verify the render's stderr shows 'Banner: <path>' (not '(none)')."
         : "";
-      const runs = await pool(topics, 4, (topicPath) =>
-        compilationAgent.invoke(
+      const runs = await pool(topics, 4, (topicPath, i) =>
+        invokeSubagent(
+          compilationAgent,
+          `compilation[${i + 1}/${topics.length}] ${topicPath}`,
           `Produce the final MP4 for this topic: ${topicPath}${silenceHint}${maxHint}${bleepHint}${bannerHint}`
         )
       );
@@ -269,7 +302,7 @@ export function makePlanAndRenderManyTool(compilationAgent: Agent) {
  */
 export function makePlanAndRenderSegmentsTool(segmentAgent: Agent) {
   return tool({
-    name: "plan_and_render_segments",
+    name: "agents_plan_and_render_segments",
     description:
       "Run the SegmentPlanner concurrently across several .segment.json files. Given a list of segment paths, returns one final MP4 path (or DISCARDED line) per segment, in the same order.",
     inputSchema: z.object({
@@ -311,8 +344,10 @@ export function makePlanAndRenderSegmentsTool(segmentAgent: Agent) {
       const bannerHint = banner
         ? "\nBANNER: REQUIRED. Run topic_to_banner and pass banner=<png> to segment_render. Verify the render's stderr shows 'Banner: <path>' (not '(none)')."
         : "";
-      const runs = await pool(segments, 4, (segmentPath) =>
-        segmentAgent.invoke(
+      const runs = await pool(segments, 4, (segmentPath, i) =>
+        invokeSubagent(
+          segmentAgent,
+          `segment[${i + 1}/${segments.length}] ${segmentPath}`,
           `Produce the final MP4 for this segment: ${segmentPath}${silenceHint}${maxHint}${bleepHint}${bannerHint}`
         )
       );

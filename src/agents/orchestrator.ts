@@ -71,7 +71,7 @@ Step 1 — Parse the user's message:
   - If intent is ambiguous (just "a few videos"), ask the user to clarify.
 - COUNTS — an integer for each requested type. "2 shorts and 3 clips" means N_compilations=2, N_segments=3. A single count like "3 shorts" means N_compilations=3, N_segments=0.
 - MAX-SECONDS — if the user says "under 45s", "max 1 minute", "no longer than Ns", capture as maxSeconds.
-- BANNER — if the user says "with a banner", "title card", "add a banner", "with a label", set banner=true and PASS banner=true to plan_and_render_many / plan_and_render_segments. Otherwise omit banner (default false).
+- BANNER — if the user says "with a banner", "title card", "add a banner", "with a label", set banner=true and PASS banner=true to agents_plan_and_render_many / agents_plan_and_render_segments. Otherwise omit banner (default false).
 - BLEEP — if the user says "no swearing", "bleep", "censor", "PG", "family-friendly", "clean", set bleep=true. If they list explicit words, capture as bleepWords (csv).
 - KEEP SILENCE — only if the user explicitly says to keep silence.
 
@@ -87,16 +87,16 @@ State the defaults you picked in the FINAL answer under an "Assumed defaults:" l
 Step 2 — Drive the pipeline:
 1. Transcribe source(s):
      - With exactly ONE source video, call Transcriber.
-     - With 2 OR MORE source videos, you MUST call transcribe_many(sources=[...all paths...]) ONCE with the full list. DO NOT loop and call Transcriber sequentially — that is strictly slower and wastes time. Any time you have a list of source videos to transcribe, transcribe_many is the ONLY correct choice.
+     - With 2 OR MORE source videos, you MUST call agents_transcribe_many(sources=[...all paths...]) ONCE with the full list. DO NOT loop and call Transcriber sequentially — that is strictly slower and wastes time. Any time you have a list of source videos to transcribe, agents_transcribe_many is the ONLY correct choice.
 2. If N_compilations > 0:
      - With ONE transcript, call TopicScout(transcript, N_compilations, maxSeconds) → N .topic.json paths.
-     - With 2+ transcripts, call topic_scout_many(transcripts, countPerTranscript=N_compilations, maxSeconds) → one group of .topic.json paths per transcript.
+     - With 2+ transcripts, call agents_topic_scout_many(transcripts, countPerTranscript=N_compilations, maxSeconds) → one group of .topic.json paths per transcript.
    If N_segments > 0:
      - With ONE transcript, call SegmentScout(transcript, N_segments, maxSeconds).
-     - With 2+ transcripts, call segment_scout_many(transcripts, countPerTranscript=N_segments, maxSeconds).
+     - With 2+ transcripts, call agents_segment_scout_many(transcripts, countPerTranscript=N_segments, maxSeconds).
 3. Fan out the rendering:
-   - plan_and_render_many(topics, keepSilence?, maxSeconds?, bleep?, bleepWords?) for compilations.
-   - plan_and_render_segments(segments, keepSilence?, maxSeconds?, bleep?, bleepWords?) for segments.
+   - agents_plan_and_render_many(topics, keepSilence?, maxSeconds?, bleep?, bleepWords?) for compilations.
+   - agents_plan_and_render_segments(segments, keepSilence?, maxSeconds?, bleep?, bleepWords?) for segments.
    Invoke both if both requested — Strands will run them in parallel when possible.
 
 Step 3 — Final answer: a short summary listing the final MP4 paths (one line per short/clip). If any slot reports a duration still over max after refinement, note that too.

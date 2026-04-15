@@ -13,7 +13,7 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { makeOrchestratorAgent } from "./agents/orchestrator.js";
 import { bus, BusEvent } from "./lib/event-bus.js";
-import { killRun } from "./tools/cli-tool.js";
+import { killRun, clearCancelled } from "./tools/cli-tool.js";
 
 const OUT_DIR = path.resolve(new URL("../out", import.meta.url).pathname);
 fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -132,6 +132,7 @@ const server = http.createServer(async (req, res) => {
       // Kick off run async; publish start/end events tagged with run_id.
       (async () => {
         bus.setCurrentRunId(run_id);
+        clearCancelled(run_id);
         bus.publish({ type: "agent_start", run_id, prompt: body.prompt });
         try {
           const result = await orchestrator.invoke(body.prompt!);

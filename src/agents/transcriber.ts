@@ -5,8 +5,8 @@ import { readFile, listDir } from "../tools/fs-tools.js";
 
 export function makeTranscriberAgent() {
   return new Agent({
-    id: "transcriber",
-    name: "Transcriber",
+    id: "agent_transcriber",
+    name: "Transcriber (agent)",
     description:
       "Given a source video (original MKV), ensures a .transcript.json exists next to it. Reuses an existing transcript if already present. Returns the transcript path.",
     model: buildModel(),
