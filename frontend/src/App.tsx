@@ -252,6 +252,11 @@ export function App() {
                     .filter((g) => !(hideStdio && g.kind === "stdio"))
                     .slice()
                     .reverse()
+                    .sort((a, b) => {
+                      const ar = (a.kind === "tool" || a.kind === "subagent") && !a.closed ? 0 : 1;
+                      const br = (b.kind === "tool" || b.kind === "subagent") && !b.closed ? 0 : 1;
+                      return ar - br;
+                    })
                     .map((g) =>
                       g.kind === "tool" ? (
                         <ToolGroup key={g.id} group={g} />
@@ -281,7 +286,10 @@ function EventBlock({ ev }: { ev: AgentEvent }) {
   const defaultCollapsed = useContext(DefaultCollapsedContext);
   const collapsible = ev.type === "agent_start" || ev.type === "agent_end";
   const [expanded, setExpanded] = useState(!defaultCollapsed);
+  const lastTick = useRef(collapse.tick);
   useEffect(() => {
+    if (lastTick.current === collapse.tick) return;
+    lastTick.current = collapse.tick;
     setExpanded(!collapse.allCollapsed);
   }, [collapse.tick]);
   const typeColor =
@@ -458,6 +466,14 @@ function groupEvents(events: AgentEvent[]): Group[] {
         ev.type === "tool_end" ||
         ev.type === "tool_output_line");
     if (isTool) {
+      // If this cli event is tagged with a subagent label, fold it into that subagent group.
+      if (d?.label) {
+        const g = openByLabel.get(d.label);
+        if (g && !g.closed) {
+          g.events.push(ev);
+          continue;
+        }
+      }
       let g = openByScript.get(script);
       if (!g || g.closed) {
         g = { kind: "tool", id: `${script}-${ev.id}`, script, events: [], closed: false };
@@ -505,7 +521,10 @@ function StdioGroup({ group }: { group: Extract<Group, { kind: "stdio" }> }) {
   const collapse = useContext(CollapseContext);
   const defaultCollapsed = useContext(DefaultCollapsedContext);
   const [expanded, setExpanded] = useState(!defaultCollapsed);
+  const lastTick = useRef(collapse.tick);
   useEffect(() => {
+    if (lastTick.current === collapse.tick) return;
+    lastTick.current = collapse.tick;
     setExpanded(!collapse.allCollapsed);
   }, [collapse.tick]);
   const wrapCls = useWrapClass();
@@ -552,7 +571,10 @@ function ToolGroup({ group }: { group: Extract<Group, { kind: "tool" }> }) {
   const collapse = useContext(CollapseContext);
   const defaultCollapsed = useContext(DefaultCollapsedContext);
   const [expanded, setExpanded] = useState(!defaultCollapsed);
+  const lastTick = useRef(collapse.tick);
   useEffect(() => {
+    if (lastTick.current === collapse.tick) return;
+    lastTick.current = collapse.tick;
     setExpanded(!collapse.allCollapsed);
   }, [collapse.tick]);
   const wrapCls = useWrapClass();
@@ -607,7 +629,10 @@ function SubagentGroup({ group }: { group: Extract<Group, { kind: "subagent" }> 
   const defaultCollapsed = useContext(DefaultCollapsedContext);
   const wrapCls = useWrapClass();
   const [expanded, setExpanded] = useState(!defaultCollapsed);
+  const lastTick = useRef(collapse.tick);
   useEffect(() => {
+    if (lastTick.current === collapse.tick) return;
+    lastTick.current = collapse.tick;
     setExpanded(!collapse.allCollapsed);
   }, [collapse.tick]);
   const start = group.events.find((e) => e.type === "subagent_start");
@@ -618,20 +643,45 @@ function SubagentGroup({ group }: { group: Extract<Group, { kind: "subagent" }> 
     .filter(Boolean)
     .join("\n\n");
   const toolCalls = (() => {
-    const byId = new Map<string, { name: string; input?: unknown; startAt: number; endAt?: number; error?: string }>();
+    type Entry = {
+      name: string;
+      input?: unknown;
+      startAt: number;
+      endAt?: number;
+      error?: string;
+      cliLines: { line: string; stream?: string }[];
+      cliExitCode?: number;
+    };
+    const byId = new Map<string, Entry>();
     const order: string[] = [];
+    const ensure = (id: string, name: string, at: number): Entry => {
+      let cur = byId.get(id);
+      if (!cur) {
+        cur = { name, startAt: at, cliLines: [] };
+        byId.set(id, cur);
+        order.push(id);
+      }
+      return cur;
+    };
     for (const e of group.events) {
-      const d = (e.data as { tool_use_id?: string; tool_name?: string; input?: unknown; error?: string } | null) ?? null;
+      const d = (e.data as { tool_use_id?: string; tool_name?: string; input?: unknown; error?: string; script?: string; line?: string; code?: number } | null) ?? null;
       const id = d?.tool_use_id;
       if (!id) continue;
       if (e.type === "agent_tool_call_start") {
-        if (!byId.has(id)) {
-          byId.set(id, { name: d.tool_name ?? "?", input: d.input, startAt: e.at });
-          order.push(id);
-        }
+        const cur = ensure(id, d.tool_name ?? "?", e.at);
+        cur.input = d.input;
+        cur.startAt = e.at;
       } else if (e.type === "agent_tool_call_end") {
         const cur = byId.get(id);
         if (cur) { cur.endAt = e.at; cur.error = d.error; }
+      } else if (e.type === "tool_start") {
+        ensure(id, d.script ?? "?", e.at);
+      } else if (e.type === "tool_output_line") {
+        const cur = ensure(id, d.script ?? "?", e.at);
+        if (d.line !== undefined) cur.cliLines.push({ line: d.line });
+      } else if (e.type === "tool_end") {
+        const cur = byId.get(id);
+        if (cur) cur.cliExitCode = d.code;
       }
     }
     return order.map((id) => ({ id, ...byId.get(id)! }));
@@ -747,7 +797,10 @@ function ReasoningPane({ text, wrapCls }: { text: string; wrapCls: string }) {
   const collapse = useContext(CollapseContext);
   const defaultCollapsed = useContext(DefaultCollapsedContext);
   const [open, setOpen] = useState(!defaultCollapsed);
+  const lastTick = useRef(collapse.tick);
   useEffect(() => {
+    if (lastTick.current === collapse.tick) return;
+    lastTick.current = collapse.tick;
     setOpen(!collapse.allCollapsed);
   }, [collapse.tick]);
   return (
@@ -773,12 +826,24 @@ function ReasoningPane({ text, wrapCls }: { text: string; wrapCls: string }) {
 function ToolCallItem({
   tc,
 }: {
-  tc: { id: string; name: string; input?: unknown; startAt: number; endAt?: number; error?: string };
+  tc: {
+    id: string;
+    name: string;
+    input?: unknown;
+    startAt: number;
+    endAt?: number;
+    error?: string;
+    cliLines: { line: string; stream?: string }[];
+    cliExitCode?: number;
+  };
 }) {
   const collapse = useContext(CollapseContext);
   const defaultCollapsed = useContext(DefaultCollapsedContext);
   const [open, setOpen] = useState(!defaultCollapsed);
+  const lastTick = useRef(collapse.tick);
   useEffect(() => {
+    if (lastTick.current === collapse.tick) return;
+    lastTick.current = collapse.tick;
     setOpen(!collapse.allCollapsed);
   }, [collapse.tick]);
   const running = tc.endAt === undefined;
@@ -796,7 +861,7 @@ function ToolCallItem({
         onClick={() => setOpen((v) => !v)}
         className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 px-4 py-1.5 text-left hover:bg-neutral-800/40"
       >
-        {preview ? (
+        {preview || tc.cliLines.length > 0 ? (
           <span className="font-mono text-xs text-neutral-500">{open ? "▾" : "▸"}</span>
         ) : (
           <span className="font-mono text-xs text-neutral-700">·</span>
@@ -810,10 +875,20 @@ function ToolCallItem({
         {dur !== undefined && (
           <span className="font-mono text-xs text-neutral-500">{dur.toFixed(1)}s</span>
         )}
+        {tc.cliExitCode !== undefined && tc.cliExitCode !== 0 && (
+          <span className="font-mono text-xs text-red-400">exit {tc.cliExitCode}</span>
+        )}
       </button>
       {open && preview && (
         <pre className="whitespace-pre-wrap break-all px-4 pb-2 font-mono text-xs text-neutral-500">
           {preview}
+        </pre>
+      )}
+      {open && tc.cliLines.length > 0 && (
+        <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words border-t border-neutral-800/50 px-4 py-2 font-mono text-xs leading-relaxed text-neutral-300">
+          {tc.cliLines.map((l, i) => (
+            <div key={i}>{l.line}</div>
+          ))}
         </pre>
       )}
     </li>

@@ -3,6 +3,7 @@ import { spawn, ChildProcess } from "child_process";
 import path from "path";
 import { z, ZodObject, ZodRawShape } from "zod";
 import { bus } from "../lib/event-bus.js";
+import { getCtx } from "../lib/run-context.js";
 
 const liveProcs: Map<string, Set<ChildProcess>> = new Map();
 const cancelledRuns: Set<string> = new Set();
@@ -56,7 +57,11 @@ export function runCli(script: string, argv: string[]): Promise<string> {
       return;
     }
     const startedAt = Date.now();
-    bus.publish({ type: "tool_start", script, argv });
+    const ctx = getCtx();
+    const ctxTags = ctx
+      ? { agent: ctx.agentId, label: ctx.label, tool_use_id: ctx.currentToolUseId }
+      : {};
+    bus.publish({ type: "tool_start", script, argv, ...ctxTags });
     const proc = spawn("npx", ["tsx", path.join(PROJECT_ROOT, script), ...argv], {
       cwd: PROJECT_ROOT,
       env: process.env,
@@ -79,7 +84,7 @@ export function runCli(script: string, argv: string[]): Promise<string> {
       const lines = lineBuf.split("\n");
       lineBuf = lines.pop() ?? "";
       for (const line of lines) {
-        bus.publish({ type: "tool_output_line", script, line });
+        bus.publish({ type: "tool_output_line", script, line, ...ctxTags });
       }
       const cleaned = s
         .split("\n")
@@ -96,11 +101,11 @@ export function runCli(script: string, argv: string[]): Promise<string> {
     proc.on("close", (code) => {
       if (runId) liveProcs.get(runId)?.delete(proc);
       if (lineBuf.length > 0) {
-        bus.publish({ type: "tool_output_line", script, line: lineBuf });
+        bus.publish({ type: "tool_output_line", script, line: lineBuf, ...ctxTags });
         lineBuf = "";
       }
       const duration_ms = Date.now() - startedAt;
-      bus.publish({ type: "tool_end", script, code, duration_ms });
+      bus.publish({ type: "tool_end", script, code, duration_ms, ...ctxTags });
       const tail = stdout.length > 8000 ? stdout.slice(-8000) : stdout;
       if (code !== 0) {
         reject(new Error(`${script} exited ${code}\nstderr tail:\n${stderrTail}`));

@@ -2,6 +2,7 @@ import { Agent, tool } from "@strands-agents/sdk";
 import { z } from "zod";
 import { bus } from "../lib/event-bus.js";
 import { isCancelled } from "./cli-tool.js";
+import { runCtx } from "../lib/run-context.js";
 
 export async function streamAgentWithReasoning(
   agent: Agent,
@@ -9,6 +10,7 @@ export async function streamAgentWithReasoning(
   agentId: string,
   prompt: string
 ): Promise<unknown> {
+  return runCtx.run({ agentId, label }, async () => {
   const gen = agent.stream(prompt);
   let result: unknown;
   while (true) {
@@ -35,6 +37,8 @@ export async function streamAgentWithReasoning(
         if (text) bus.publish({ type: "subagent_reasoning", agent: agentId, label, text });
       }
     } else if (ev?.type === "beforeToolCallEvent" && ev.toolUse) {
+      const store = runCtx.getStore();
+      if (store) store.currentToolUseId = ev.toolUse.toolUseId;
       bus.publish({
         type: "agent_tool_call_start",
         agent: agentId,
@@ -44,6 +48,8 @@ export async function streamAgentWithReasoning(
         input: ev.toolUse.input,
       });
     } else if (ev?.type === "afterToolCallEvent" && ev.toolUse) {
+      const store = runCtx.getStore();
+      if (store) store.currentToolUseId = undefined;
       const errMsg = ev.error
         ? ev.error instanceof Error
           ? ev.error.message
@@ -60,6 +66,7 @@ export async function streamAgentWithReasoning(
     }
   }
   return result;
+  });
 }
 
 async function invokeSubagent(agent: Agent, label: string, prompt: string): Promise<unknown> {
