@@ -93,12 +93,14 @@ export const topicToCompilation = cliTool({
     "Given a .topic.json, filter the referenced transcript line-by-line and save a .compilation.json plan (no rendering yet). Review this plan before rendering.",
   script: "src/commands/topic-to-compilation.ts",
   positional: ["topic"],
+  boolFlags: ["silenceStripped"],
   input: z.object({
     topic: z.string().describe("Path to .topic.json"),
     transcript: z.string().optional(),
     source: z.string().optional(),
     maxSeconds: z.number().optional().describe("Soft ceiling hinted to the LLM. If exceeded, stderr reports OVER_MAX — call compilation_refine to iterate."),
     userPrompt: z.string().optional().describe("Original user request this work serves — forwarded to the LLM as context."),
+    silenceStripped: z.boolean().optional().describe("Set true when silence will be removed downstream (the default). Applies a 30% discount when comparing sum-of-clips against maxSeconds so the LLM doesn't over-trim."),
     output: z.string().optional(),
   }),
 });
@@ -128,11 +130,14 @@ export const compilationRefine = cliTool({
     "Modify an existing .compilation.json. Pass `maxSeconds` to trim to a length budget, `instruction` for free-text edits (e.g. \"remove the part where X happens\"), or both. Writes the next version (.compilation.2.json, .3.json, …). Stderr reports `DURATION: Ns MAX: Ms` and `OVER_MAX: …` when a length ceiling is given and still exceeded. Iterate by calling again on the new path.",
   script: "src/commands/compilation-refine.ts",
   positional: ["compilation"],
+  boolFlags: ["silenceStripped"],
   input: z.object({
     compilation: z.string().describe("Path to any .compilation[.N].json"),
+    transcript: z.string().optional().describe("Override transcript path. Default: derived from compilation.source (replacing extension with .transcript.json). When loaded, refine may ADD new material from the transcript, not just drop/shrink existing clips."),
     maxSeconds: z.number().optional().describe("Hard ceiling in seconds (optional if instruction is provided)"),
     instruction: z.string().optional().describe("Free-text modification directive, e.g. 'drop the clip where the speaker talks about X'"),
     userPrompt: z.string().optional().describe("Original user request this work serves — forwarded to the LLM as context."),
+    silenceStripped: z.boolean().optional().describe("Set true when silence will be removed downstream (the default). Applies a 30% discount when comparing current duration against maxSeconds so the LLM doesn't over-trim."),
     output: z.string().optional(),
   }),
 });

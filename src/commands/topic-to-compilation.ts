@@ -40,6 +40,7 @@ program
   )
   .option("--max-seconds <n>", "Maximum allowed total clip duration; discard plan if exceeded")
   .option("--user-prompt <text>", "Original user request this work serves — passed verbatim to the LLM as context")
+  .option("--silence-stripped", "Silence will be removed downstream — apply a 30% discount when comparing sum-of-clips against maxSeconds.")
   .option("--model <model>", "Claude model to use", "claude-opus-4-6");
 
 if (process.argv.length <= 2) { program.outputHelp(); process.exit(0); }
@@ -52,8 +53,11 @@ const opts = program.opts<{
   mergeGap: string;
   maxSeconds?: string;
   userPrompt?: string;
+  silenceStripped?: boolean;
   model: string;
 }>();
+
+const SILENCE_STRIP_FACTOR = 0.7;
 
 const [topicArg] = program.args;
 
@@ -87,11 +91,12 @@ async function filterByStory(
   model: string,
   client: Anthropic,
   maxSeconds?: number,
-  userPrompt?: string
+  userPrompt?: string,
+  silenceStripped?: boolean
 ): Promise<CompilationClip[]> {
   const transcriptText = buildTranscriptText(transcript.segments);
   const maxLine = maxSeconds !== undefined
-    ? `\n\nHARD CEILING: the sum of kept clip durations MUST NOT EXCEED ${maxSeconds} seconds total. Cut aggressively. If you can't fit under the ceiling, keep only the most essential beats.`
+    ? `\n\nHARD CEILING: the final post-silence-strip duration MUST NOT EXCEED ${maxSeconds} seconds.${silenceStripped ? ` Silence WILL be removed downstream, which typically cuts ~30% off the raw clip sum — so you can keep up to roughly ${(maxSeconds / SILENCE_STRIP_FACTOR).toFixed(0)}s of raw clip sum. Cut aggressively but account for this headroom.` : ` Cut aggressively.`} If you can't fit under the ceiling, keep only the most essential beats.`
     : "";
   const userContextLine = userPrompt
     ? `\n\nUSER REQUEST CONTEXT (the broader ask this work is serving; let it inform what to emphasise or trim):\n"""${userPrompt}"""`
@@ -222,7 +227,8 @@ async function main() {
 
   const client = new Anthropic({ apiKey });
   const maxSeconds = opts.maxSeconds !== undefined ? parseFloat(opts.maxSeconds) : undefined;
-  const rawClips = await filterByStory(transcript, topic.topic, topic.story, opts.model, client, maxSeconds, opts.userPrompt);
+  const silenceStripped = !!opts.silenceStripped;
+  const rawClips = await filterByStory(transcript, topic.topic, topic.story, opts.model, client, maxSeconds, opts.userPrompt, silenceStripped);
 
   const clips = mergeClips(rawClips, mergeGap);
   const totalDuration = clips.reduce((s, c) => s + c.end_s - c.start_s, 0);
@@ -274,15 +280,17 @@ async function main() {
     })),
   });
   process.stderr.write(`\nSaved: ${compilationPath}\n`);
+  const effectiveDuration = silenceStripped ? totalDuration * SILENCE_STRIP_FACTOR : totalDuration;
   process.stderr.write(
-    `DURATION: ${totalDuration.toFixed(1)}s` +
+    `DURATION: ${effectiveDuration.toFixed(1)}s` +
+      (silenceStripped ? ` (post-silence-strip est; raw=${totalDuration.toFixed(1)}s, −30%)` : "") +
       (maxSeconds !== undefined ? ` MAX: ${maxSeconds}s` : "") +
       "\n"
   );
-  if (maxSeconds !== undefined && totalDuration > maxSeconds) {
-    const over = totalDuration - maxSeconds;
+  if (maxSeconds !== undefined && effectiveDuration > maxSeconds) {
+    const over = effectiveDuration - maxSeconds;
     process.stderr.write(
-      `OVER_MAX: current=${totalDuration.toFixed(1)}s max=${maxSeconds}s cut_at_least=${over.toFixed(1)}s — call compilation_refine on ${compilationPath}\n`
+      `OVER_MAX: current=${effectiveDuration.toFixed(1)}s max=${maxSeconds}s cut_at_least=${over.toFixed(1)}s — call compilation_refine on ${compilationPath}\n`
     );
   }
 }

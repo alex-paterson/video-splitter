@@ -428,9 +428,13 @@ export function makePlanAndRenderManyTool(makeAgent: () => Agent) {
       const silenceHint = keepSilence
         ? "\nThe top-level user explicitly asked to KEEP silence — skip the video_remove_silence step and return the raw compilation_render output path."
         : "";
+      const silenceStrippedDownstream = !keepSilence;
+      const silenceStrippedHint = silenceStrippedDownstream
+        ? `\nSILENCE WILL BE STRIPPED after render. When calling topic_to_compilation or compilation_refine, ALWAYS pass silenceStripped=true — they'll apply a 30% discount when comparing current duration to maxSeconds, so you don't over-trim.`
+        : `\nSILENCE WILL BE KEPT. Do NOT pass silenceStripped=true to topic_to_compilation / compilation_refine — raw clip sum is the real duration.`;
       const maxHint =
         maxSeconds !== undefined
-          ? `\nMAX SECONDS: ${maxSeconds}. Pass maxSeconds=${maxSeconds} to topic_to_compilation; if the plan is OVER_MAX, iterate with compilation_refine (up to 4×) until DURATION <= MAX. Render the latest version.`
+          ? `\nMAX SECONDS: ${maxSeconds}. Pass maxSeconds=${maxSeconds} to topic_to_compilation${silenceStrippedDownstream ? ` AND silenceStripped=true` : ``}; if the plan is OVER_MAX, iterate with compilation_refine (up to 4×) passing the same flags until DURATION <= MAX. Render the latest version.`
           : "";
       const bleepHint = bleep || bleepWords
         ? `\nBLEEP: after silence-strip and before video_publish, call video_bleep on the silence-stripped MP4.${bleepWords ? ` Pass words="${bleepWords}".` : " Pass auto=true."} Then call video_publish on it.`
@@ -445,7 +449,7 @@ export function makePlanAndRenderManyTool(makeAgent: () => Agent) {
         invokeSubagent(
           makeAgent(),
           `compilation[${i + 1}/${topics.length}] ${topicPath}`,
-          `Produce the final MP4 for this topic: ${topicPath}${silenceHint}${maxHint}${bleepHint}${bannerHint}${userHint}`,
+          `Produce the final MP4 for this topic: ${topicPath}${silenceHint}${silenceStrippedHint}${maxHint}${bleepHint}${bannerHint}${userHint}`,
           sig,
         )
       );

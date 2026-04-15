@@ -1,14 +1,16 @@
-import { AnthropicModel } from "@strands-agents/sdk/models/anthropic";
+import { OpenAIModel } from "@strands-agents/sdk/models/openai";
+// import { AnthropicModel } from "@strands-agents/sdk/models/anthropic";
 
 export function buildModel() {
-  return new AnthropicModel({
-    modelId: "claude-sonnet-4-6",
-    // modelId: "claude-opus-4-6",
-    maxTokens: 16384,
-    params: {
-      thinking: { type: "enabled", budget_tokens: 4000 },
-    },
-  });
+  return new OpenAIModel({ api: "chat" });
+  // return new AnthropicModel({
+  //   modelId: "claude-sonnet-4-6",
+  //   // modelId: "claude-opus-4-6",
+  //   maxTokens: 16384,
+  //   params: {
+  //     thinking: { type: "enabled", budget_tokens: 4000 },
+  //   },
+  // });
 }
 
 export const HARD_RULES = `

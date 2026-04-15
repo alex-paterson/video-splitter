@@ -21,7 +21,9 @@
       "Bash(git stash:*)",
       "Bash(cp \"/home/alex/OBS/2026-04-14 00-49-18.devs-roast-their-own-horror-game-while-h.compilation.3.json.compilation.cut.mp4\" /mnt/macmini/)",
       "Read(//mnt/macmini/**)",
-      "Bash(xxd)"
+      "Bash(xxd)",
+      "Bash(ls -la ~/OBS/*spiderweb*)",
+      "Read(//tmp/**)"
     ]
   }
 }
