@@ -8,6 +8,9 @@ import { makeSegmentAgent } from "./segment.js";
 import {
   makePlanAndRenderManyTool,
   makePlanAndRenderSegmentsTool,
+  makeTranscribeManyTool,
+  makeTopicScoutManyTool,
+  makeSegmentScoutManyTool,
 } from "../tools/fan-out.js";
 import { readFile, listDir, projectOverview } from "../tools/fs-tools.js";
 import { memoryRead, memoryAppend } from "../tools/memory.js";
@@ -20,6 +23,9 @@ export function makeOrchestratorAgent() {
   const segment = makeSegmentAgent();
   const planAndRenderMany = makePlanAndRenderManyTool(compilation);
   const planAndRenderSegments = makePlanAndRenderSegmentsTool(segment);
+  const transcribeMany = makeTranscribeManyTool(transcriber);
+  const topicScoutMany = makeTopicScoutManyTool(topicScout);
+  const segmentScoutMany = makeSegmentScoutManyTool(segmentScout);
 
   return new Agent({
     id: "orchestrator",
@@ -34,6 +40,9 @@ export function makeOrchestratorAgent() {
       segment,
       planAndRenderMany,
       planAndRenderSegments,
+      transcribeMany,
+      topicScoutMany,
+      segmentScoutMany,
       readFile,
       listDir,
       projectOverview,
@@ -76,10 +85,13 @@ NEVER ask the user questions — the runtime is non-interactive. If something is
 State the defaults you picked in the FINAL answer under an "Assumed defaults:" line — do not ask.
 
 Step 2 — Drive the pipeline:
-1. Call Transcriber with the source video path → .transcript.json path.
-2. If N_compilations > 0, call TopicScout(transcript, N_compilations, maxSeconds) → N .topic.json paths.
-   If N_segments > 0, call SegmentScout(transcript, N_segments, maxSeconds) → N .segment.json paths.
-   These can run sequentially (scouts are fast) — or in parallel if convenient.
+1. Transcribe source(s): with ONE source video, call Transcriber. With 2+ source videos, call transcribe_many with the list so they run concurrently (capped at 4).
+2. If N_compilations > 0:
+     - With ONE transcript, call TopicScout(transcript, N_compilations, maxSeconds) → N .topic.json paths.
+     - With 2+ transcripts, call topic_scout_many(transcripts, countPerTranscript=N_compilations, maxSeconds) → one group of .topic.json paths per transcript.
+   If N_segments > 0:
+     - With ONE transcript, call SegmentScout(transcript, N_segments, maxSeconds).
+     - With 2+ transcripts, call segment_scout_many(transcripts, countPerTranscript=N_segments, maxSeconds).
 3. Fan out the rendering:
    - plan_and_render_many(topics, keepSilence?, maxSeconds?, bleep?, bleepWords?) for compilations.
    - plan_and_render_segments(segments, keepSilence?, maxSeconds?, bleep?, bleepWords?) for segments.
