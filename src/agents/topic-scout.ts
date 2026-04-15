@@ -6,7 +6,7 @@ import { readFile } from "../tools/fs-tools.js";
 export function makeTopicScoutAgent() {
   return new Agent({
     id: "agent_topic_scout",
-    name: "TopicScout (agent)",
+    name: "agent_topic_scout",
     description:
       "Given a transcript path and a desired count N, brainstorms N distinct promising topics and produces one .topic.json per topic. Returns the list of .topic.json paths.",
     model: buildModel(),

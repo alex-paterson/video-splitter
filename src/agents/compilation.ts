@@ -14,7 +14,7 @@ import { compilationEstimateDuration } from "../tools/estimate.js";
 export function makeCompilationAgent() {
   return new Agent({
     id: "agent_compilation_planner",
-    name: "CompilationPlanner (agent)",
+    name: "agent_compilation_planner",
     description:
       "Given one .topic.json, builds the .compilation.json plan, reviews it, renders it, and strips silence from the final MP4. Returns the final silence-stripped MP4 path. Honors max-seconds (discard-and-regenerate) and optional bleep/censor.",
     model: buildModel(),

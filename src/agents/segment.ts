@@ -12,7 +12,7 @@ import { segmentEstimateDuration } from "../tools/estimate.js";
 export function makeSegmentAgent() {
   return new Agent({
     id: "agent_segment_planner",
-    name: "SegmentPlanner (agent)",
+    name: "agent_segment_planner",
     description:
       "Given one .segment.json, renders it to an MP4 clip, strips silence by default, optionally bleeps profanity, and returns the final MP4 path. Mirrors CompilationPlanner.",
     model: buildModel(),
