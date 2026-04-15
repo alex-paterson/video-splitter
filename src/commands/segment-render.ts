@@ -41,7 +41,7 @@ program
   .option("--output <path>", "Output file path")
   .option("--threads <n>", "ffmpeg thread count (0 = auto)", "0")
   .option("--hw-accel <api>", "Hardware acceleration: nvenc | vaapi | videotoolbox")
-  .option("--banner <png>", "Optional PNG overlaid at top-center, scaled to video width");
+  .option("--banner <png>", "Optional PNG overlaid centered on the video (fit inside 60% W × 40% H)");
 
 if (process.argv.length <= 2) { program.outputHelp(); process.exit(0); }
 program.parse();
@@ -257,10 +257,14 @@ async function main() {
   const encoderName = hwAccelInput ? hwAccelInput.encoderName : opts.codec;
 
   const bannerPath = opts.banner ? path.resolve(opts.banner) : null;
+  const bannerMaxW = Math.round(outW * 0.6);
+  const bannerMaxH = Math.round(outH * 0.4);
   const filterArgs: string[] = bannerPath
     ? [
         "-filter_complex",
-        `[0:v]${vfFilter}[vbase];[1:v]scale=${outW}:-1[bnr];[vbase][bnr]overlay=(main_w-overlay_w)/2:0[vout]`,
+        `[0:v]${vfFilter}[vbase];` +
+          `[1:v]scale=${bannerMaxW}:${bannerMaxH}:force_original_aspect_ratio=decrease[bnr];` +
+          `[vbase][bnr]overlay=20:20:format=auto[vout]`,
         "-map", "[vout]",
         "-map", "0:a?",
       ]

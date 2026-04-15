@@ -171,7 +171,12 @@ export function runFfmpeg(
   spawnOpts?: SpawnOptionsWithoutStdio
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn("ffmpeg", ["-hide_banner", ...args], spawnOpts);
+    const fullArgs = ["-hide_banner", ...args];
+    const shell = fullArgs
+      .map((a) => (/[\s"'$`\\()*?\[\]|&;<>]/.test(a) ? `'${a.replace(/'/g, `'\\''`)}'` : a))
+      .join(" ");
+    process.stderr.write(`ffmpeg ${shell}\n`);
+    const proc = spawn("ffmpeg", fullArgs, spawnOpts);
     let stderr = "";
 
     proc.stderr.on("data", (chunk: Buffer) => {

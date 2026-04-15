@@ -37,6 +37,10 @@ export function makePlanAndRenderManyTool(compilationAgent: Agent) {
         .string()
         .optional()
         .describe("Optional comma-separated list of words to bleep."),
+      banner: z
+        .boolean()
+        .optional()
+        .describe("If true, generate and overlay a centered banner PNG. Default false."),
     }),
     callback: async ({
       topics,
@@ -44,12 +48,14 @@ export function makePlanAndRenderManyTool(compilationAgent: Agent) {
       maxSeconds,
       bleep,
       bleepWords,
+      banner,
     }: {
       topics: string[];
       keepSilence?: boolean;
       maxSeconds?: number;
       bleep?: boolean;
       bleepWords?: string;
+      banner?: boolean;
     }) => {
       const silenceHint = keepSilence
         ? "\nThe top-level user explicitly asked to KEEP silence — skip the video_remove_silence step and return the raw compilation_render output path."
@@ -61,10 +67,13 @@ export function makePlanAndRenderManyTool(compilationAgent: Agent) {
       const bleepHint = bleep || bleepWords
         ? `\nBLEEP: after silence-stripping, run transcript_to_bleep_plan and video_apply_bleep (mode=mute).${bleepWords ? ` Use these words: ${bleepWords}.` : " Use auto=true."}`
         : "";
+      const bannerHint = banner
+        ? "\nBANNER: REQUIRED. Run topic_to_banner and pass banner=<png> to compilation_render. Verify the render's stderr shows 'Banner: <path>' (not '(none)')."
+        : "";
       const runs = await Promise.allSettled(
         topics.map((topicPath) =>
           compilationAgent.invoke(
-            `Produce the final MP4 for this topic: ${topicPath}${silenceHint}${maxHint}${bleepHint}`
+            `Produce the final MP4 for this topic: ${topicPath}${silenceHint}${maxHint}${bleepHint}${bannerHint}`
           )
         )
       );
@@ -103,6 +112,7 @@ export function makePlanAndRenderSegmentsTool(segmentAgent: Agent) {
       maxSeconds: z.number().optional(),
       bleep: z.boolean().optional(),
       bleepWords: z.string().optional(),
+      banner: z.boolean().optional(),
     }),
     callback: async ({
       segments,
@@ -110,12 +120,14 @@ export function makePlanAndRenderSegmentsTool(segmentAgent: Agent) {
       maxSeconds,
       bleep,
       bleepWords,
+      banner,
     }: {
       segments: string[];
       keepSilence?: boolean;
       maxSeconds?: number;
       bleep?: boolean;
       bleepWords?: string;
+      banner?: boolean;
     }) => {
       const silenceHint = keepSilence
         ? "\nThe top-level user explicitly asked to KEEP silence — skip video_remove_silence and return the raw segment_render output path."
@@ -127,10 +139,13 @@ export function makePlanAndRenderSegmentsTool(segmentAgent: Agent) {
       const bleepHint = bleep || bleepWords
         ? `\nBLEEP: after silence-stripping, run transcript_to_bleep_plan and video_apply_bleep (mode=mute).${bleepWords ? ` Use these words: ${bleepWords}.` : " Use auto=true."}`
         : "";
+      const bannerHint = banner
+        ? "\nBANNER: REQUIRED. Run topic_to_banner and pass banner=<png> to segment_render. Verify the render's stderr shows 'Banner: <path>' (not '(none)')."
+        : "";
       const runs = await Promise.allSettled(
         segments.map((segmentPath) =>
           segmentAgent.invoke(
-            `Produce the final MP4 for this segment: ${segmentPath}${silenceHint}${maxHint}${bleepHint}`
+            `Produce the final MP4 for this segment: ${segmentPath}${silenceHint}${maxHint}${bleepHint}${bannerHint}`
           )
         )
       );

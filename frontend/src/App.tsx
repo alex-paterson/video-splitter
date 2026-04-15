@@ -1,35 +1,88 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 
 type AgentEvent = {
-  id: number;
+  id: string;
   type: string;
   data: unknown;
   at: number;
 };
 
+let fallbackCounter = 0;
+
+const WrapContext = createContext(true);
+const useWrapClass = () =>
+  useContext(WrapContext) ? "whitespace-pre-wrap break-words" : "whitespace-pre overflow-x-auto";
+
+const CollapseContext = createContext<{ allCollapsed: boolean; tick: number }>({
+  allCollapsed: false,
+  tick: 0,
+});
+
+type OutFile = { name: string; size: number; created_ms: number };
+
+const STORAGE_KEY = "agent-stream-events-v1";
+const MAX_PERSISTED = 5000;
+
+function loadEvents(): AgentEvent[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export function App() {
-  const [events, setEvents] = useState<AgentEvent[]>([]);
+  const [events, setEvents] = useState<AgentEvent[]>(() => loadEvents());
   const [status, setStatus] = useState<"idle" | "connecting" | "open" | "closed" | "error">("idle");
   const [prompt, setPrompt] = useState("");
   const [running, setRunning] = useState(false);
   const [lastRunId, setLastRunId] = useState<string | null>(null);
+  const [wrap, setWrap] = useState(true);
+  const [filterLanguage, setFilterLanguage] = useState(true);
+  const [safeForWork, setSafeForWork] = useState(true);
+  const [allCollapsed, setAllCollapsed] = useState(false);
+  const [collapseTick, setCollapseTick] = useState(0);
   const esRef = useRef<EventSource | null>(null);
+
+  const toggleAll = () => {
+    setAllCollapsed((v) => !v);
+    setCollapseTick((t) => t + 1);
+  };
 
   const runPrompt = async () => {
     if (!prompt.trim() || running) return;
     setRunning(true);
     try {
+      const parts: string[] = [];
+      if (filterLanguage) {
+        parts.push("Bleep curse words (profanity) in the final video output.");
+      }
+      if (safeForWork) {
+        parts.push(
+          "Keep it safe-for-work: avoid selecting clips with graphic sexual content, hard drugs, or slurs. " +
+          "However, do NOT discard phrases just because they mention mild/borderline topics (e.g. 'I'm going to go hit a bong', casual drinking, mild innuendo). " +
+          "Only individual curse words should be bleeped — the surrounding phrases stay in."
+        );
+      }
+      const suffix = parts.length ? "\n\n" + parts.join("\n") : "";
+      const finalPrompt = prompt.trim() + suffix;
       const r = await fetch("/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: prompt.trim() }),
+        body: JSON.stringify({ prompt: finalPrompt }),
       });
       const j = await r.json();
-      if (j.run_id) setLastRunId(j.run_id);
+      if (j.run_id) {
+        setLastRunId(j.run_id);
+        setPrompt("");
+      }
     } catch (e) {
       setEvents((prev) => [
         ...prev,
-        { id: Date.now(), type: "error", data: String(e), at: Date.now() },
+        { id: `local-${++fallbackCounter}`, type: "error", data: String(e), at: Date.now() },
       ]);
     } finally {
       setRunning(false);
@@ -37,20 +90,30 @@ export function App() {
   };
 
   useEffect(() => {
+    try {
+      const slice = events.slice(-MAX_PERSISTED);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(slice));
+    } catch { }
+  }, [events]);
+
+  useEffect(() => {
     setStatus("connecting");
     const es = new EventSource("/events");
     esRef.current = es;
-    let counter = 0;
     es.onopen = () => setStatus("open");
     es.onerror = () => setStatus("error");
     es.onmessage = (e) => {
       let parsed: unknown = e.data;
-      try { parsed = JSON.parse(e.data); } catch {}
-      const type =
-        parsed && typeof parsed === "object" && "type" in parsed
-          ? String((parsed as { type: unknown }).type)
-          : "message";
-      setEvents((prev) => [...prev, { id: counter++, type, data: parsed, at: Date.now() }]);
+      try { parsed = JSON.parse(e.data); } catch { }
+      const obj = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+      const type = typeof obj.type === "string" ? obj.type : "message";
+      const busId = typeof obj.id === "string" ? obj.id : null;
+      const at = typeof obj.ts === "number" ? obj.ts : Date.now();
+      setEvents((prev) => {
+        if (busId !== null && prev.some((p) => p.id === busId)) return prev;
+        const id = busId ?? `local-${++fallbackCounter}`;
+        return [...prev, { id, type, data: parsed, at }];
+      });
     };
     return () => {
       es.close();
@@ -59,59 +122,109 @@ export function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100">
-      <header className="sticky top-0 z-10 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
-          <h1 className="text-lg font-semibold tracking-tight">Agent Stream</h1>
-          <StatusDot status={status} />
-        </div>
-      </header>
+    <WrapContext.Provider value={wrap}>
+      <CollapseContext.Provider value={{ allCollapsed, tick: collapseTick }}>
+        <div className="min-h-screen bg-neutral-950 text-neutral-100">
+          <header className="sticky top-0 z-10 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur">
+            <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
+              <h1 className="text-lg font-semibold tracking-tight">Agent Stream</h1>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={toggleAll}
+                  className="rounded-md bg-neutral-800 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-700"
+                >
+                  {allCollapsed ? "expand all" : "collapse all"}
+                </button>
+                <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
+                  <input
+                    type="checkbox"
+                    checked={wrap}
+                    onChange={(e) => setWrap(e.target.checked)}
+                    className="h-3 w-3 accent-emerald-600"
+                  />
+                  wrap
+                </label>
+                <StatusDot status={status} />
+              </div>
+            </div>
+          </header>
 
-      <main className="mx-auto max-w-3xl px-6 py-6">
-        <div className="mb-6 rounded-lg border border-neutral-800 bg-neutral-900 p-3">
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                runPrompt();
-              }
-            }}
-            placeholder='e.g. "make me 2 shorts from /home/alex/OBS/foo.mkv, max 60s"'
-            rows={3}
-            className="w-full resize-y rounded-md bg-neutral-950 px-3 py-2 font-mono text-sm text-neutral-100 outline-none ring-1 ring-neutral-800 focus:ring-emerald-600"
-          />
-          <div className="mt-2 flex items-center justify-between">
-            <span className="font-mono text-xs text-neutral-500">
-              {lastRunId ? `last run_id: ${lastRunId}` : "⌘/Ctrl+Enter to run"}
-            </span>
-            <button
-              onClick={runPrompt}
-              disabled={running || !prompt.trim()}
-              className="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-neutral-700"
-            >
-              {running ? "Submitting…" : "Run"}
-            </button>
-          </div>
-        </div>
-        {events.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-neutral-800 p-10 text-center text-sm text-neutral-500">
-            No events yet. Submit a prompt above to start.
-          </div>
-        ) : (
-          <ol className="space-y-3">
-            {groupEvents(events).slice().reverse().map((g) =>
-              g.kind === "tool" ? (
-                <ToolGroup key={g.id} group={g} />
-              ) : (
-                <EventBlock key={g.ev.id} ev={g.ev} />
-              )
+          <main className="mx-auto max-w-3xl px-6 py-6">
+            <FilesPanel />
+            <div className="mb-6 rounded-lg border border-neutral-800 bg-neutral-900 p-3">
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    runPrompt();
+                  }
+                }}
+                placeholder={`e.g.
+  "make me 3 shorts from /home/alex/OBS/foo.mkv, max 60s each"
+  "2 clips of the funniest moments from foo.mkv, portrait 9:16"
+  "1 compilation about the bugs we hit, landscape 1080p, with banner"
+  "90s highlight reel from foo.mkv, no swearing"
+  "find the segment where we talk about auth and render it"
+  "what's in foo.mkv? list the main topics"`}
+                rows={8}
+                className="w-full resize-y rounded-md bg-neutral-950 px-3 py-2 font-mono text-sm text-neutral-100 outline-none ring-1 ring-neutral-800 focus:ring-emerald-600"
+              />
+              <div className="mt-2 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
+                    <input
+                      type="checkbox"
+                      checked={filterLanguage}
+                      onChange={(e) => setFilterLanguage(e.target.checked)}
+                      className="h-3 w-3 accent-emerald-600"
+                    />
+                    Bleep curse words
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
+                    <input
+                      type="checkbox"
+                      checked={safeForWork}
+                      onChange={(e) => setSafeForWork(e.target.checked)}
+                      className="h-3 w-3 accent-emerald-600"
+                    />
+                    Safe for work
+                  </label>
+                  <span className="font-mono text-xs text-neutral-500">
+                    {lastRunId ? `last run_id: ${lastRunId}` : "⌘/Ctrl+Enter to run"}
+                  </span>
+                </div>
+                <button
+                  onClick={runPrompt}
+                  disabled={running || !prompt.trim()}
+                  className="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-neutral-700"
+                >
+                  {running ? "Submitting…" : "Run"}
+                </button>
+              </div>
+            </div>
+            {events.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-neutral-800 p-10 text-center text-sm text-neutral-500">
+                No events yet. Submit a prompt above to start.
+              </div>
+            ) : (
+              <ol className="space-y-3">
+                {groupEvents(events).slice().reverse().map((g) =>
+                  g.kind === "tool" ? (
+                    <ToolGroup key={g.id} group={g} />
+                  ) : g.kind === "stdio" ? (
+                    <StdioGroup key={g.id} group={g} />
+                  ) : (
+                    <EventBlock key={g.ev.id} ev={g.ev} />
+                  )
+                )}
+              </ol>
             )}
-          </ol>
-        )}
-      </main>
-    </div>
+          </main>
+        </div>
+      </CollapseContext.Provider>
+    </WrapContext.Provider>
   );
 }
 
@@ -156,6 +269,7 @@ function EventBlock({ ev }: { ev: AgentEvent }) {
 
 function EventBody({ type, data }: { type: string; data: unknown }) {
   const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+  const wrapCls = useWrapClass();
 
   if (type === "agent_start" && typeof d.prompt === "string") {
     return (
@@ -181,7 +295,7 @@ function EventBody({ type, data }: { type: string; data: unknown }) {
     const isErr = d.stream === "stderr";
     return (
       <pre
-        className={`overflow-x-auto px-4 py-2 font-mono text-xs ${isErr ? "text-amber-300" : "text-neutral-300"}`}
+        className={`px-4 py-2 font-mono text-xs ${wrapCls} ${isErr ? "text-amber-300" : "text-neutral-300"}`}
       >
         {d.line}
       </pre>
@@ -195,7 +309,7 @@ function EventBody({ type, data }: { type: string; data: unknown }) {
 
   const body = typeof data === "string" ? data : JSON.stringify(data, null, 2);
   return (
-    <pre className="overflow-x-auto px-4 py-3 font-mono text-xs leading-relaxed text-neutral-300">
+    <pre className={`px-4 py-3 font-mono text-xs leading-relaxed text-neutral-300 ${wrapCls}`}>
       {body}
     </pre>
   );
@@ -211,7 +325,7 @@ function extractAgentEndText(d: Record<string, unknown>): string | null {
     };
     const text = parsed.lastMessage?.content?.map((c) => c.text ?? "").join("\n").trim();
     if (text) return text;
-  } catch {}
+  } catch { }
   return content;
 }
 
@@ -267,7 +381,8 @@ function renderInline(text: string): React.ReactNode {
 
 type Group =
   | { kind: "solo"; ev: AgentEvent }
-  | { kind: "tool"; id: string; script: string; events: AgentEvent[]; closed: boolean };
+  | { kind: "tool"; id: string; script: string; events: AgentEvent[]; closed: boolean }
+  | { kind: "stdio"; id: string; events: AgentEvent[] };
 
 function groupEvents(events: AgentEvent[]): Group[] {
   const groups: Group[] = [];
@@ -289,15 +404,74 @@ function groupEvents(events: AgentEvent[]): Group[] {
       }
       g.events.push(ev);
       if (ev.type === "tool_end") g.closed = true;
-    } else {
-      groups.push({ kind: "solo", ev });
+      continue;
     }
+    if (ev.type === "stdio") {
+      const last = groups[groups.length - 1];
+      if (last && last.kind === "stdio") {
+        last.events.push(ev);
+      } else {
+        groups.push({ kind: "stdio", id: `stdio-${ev.id}`, events: [ev] });
+      }
+      continue;
+    }
+    groups.push({ kind: "solo", ev });
   }
   return groups;
 }
 
+function StdioGroup({ group }: { group: Extract<Group, { kind: "stdio" }> }) {
+  const collapse = useContext(CollapseContext);
+  const [expanded, setExpanded] = useState(true);
+  useEffect(() => {
+    setExpanded(!collapse.allCollapsed);
+  }, [collapse.tick]);
+  const wrapCls = useWrapClass();
+  const first = group.events[0];
+  const last = group.events[group.events.length - 1];
+  return (
+    <li className="overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center justify-between border-b border-neutral-800 px-4 py-2 hover:bg-neutral-800/50"
+      >
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="rounded bg-neutral-800 px-2 py-0.5 font-mono text-xs text-neutral-400">
+            stdio
+          </span>
+          <span className="font-mono text-xs text-neutral-500">
+            {group.events.length} line{group.events.length === 1 ? "" : "s"}
+          </span>
+        </div>
+        <span className="font-mono text-xs text-neutral-500">
+          {new Date(first.at).toLocaleTimeString()}
+          {last !== first ? `–${new Date(last.at).toLocaleTimeString()}` : ""} {expanded ? "▾" : "▸"}
+        </span>
+      </button>
+      {expanded && (
+        <pre className={`max-h-80 overflow-auto px-4 py-2 font-mono text-xs leading-relaxed ${wrapCls}`}>
+          {group.events.slice().reverse().map((e, i) => {
+            const d = (e.data as { line?: string; stream?: string }) ?? {};
+            const cls = d.stream === "stderr" ? "text-amber-300" : "text-neutral-300";
+            return (
+              <div key={i} className={cls}>
+                {d.line ?? ""}
+              </div>
+            );
+          })}
+        </pre>
+      )}
+    </li>
+  );
+}
+
 function ToolGroup({ group }: { group: Extract<Group, { kind: "tool" }> }) {
+  const collapse = useContext(CollapseContext);
   const [expanded, setExpanded] = useState(!group.closed);
+  useEffect(() => {
+    setExpanded(!collapse.allCollapsed);
+  }, [collapse.tick]);
+  const wrapCls = useWrapClass();
   const start = group.events.find((e) => e.type === "tool_start");
   const end = group.events.find((e) => e.type === "tool_end");
   const lines = group.events.filter((e) => e.type === "tool_output_line");
@@ -320,7 +494,7 @@ function ToolGroup({ group }: { group: Extract<Group, { kind: "tool" }> }) {
         onClick={() => setExpanded((v) => !v)}
         className="flex w-full items-center justify-between border-b border-neutral-800 px-4 py-2 hover:bg-neutral-800/50"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="rounded bg-neutral-800 px-2 py-0.5 font-mono text-xs text-sky-400">
             {group.script}
           </span>
@@ -335,11 +509,73 @@ function ToolGroup({ group }: { group: Extract<Group, { kind: "tool" }> }) {
         </span>
       </button>
       {expanded && (
-        <pre className="max-h-80 overflow-auto px-4 py-3 font-mono text-xs leading-relaxed text-neutral-300">
-          {lines.map((l) => (l.data as { line?: string }).line ?? "").join("\n")}
+        <pre className={`max-h-80 overflow-auto px-4 py-3 font-mono text-xs leading-relaxed text-neutral-300 ${wrapCls}`}>
+          {lines.slice().reverse().map((l) => (l.data as { line?: string }).line ?? "").join("\n")}
         </pre>
       )}
     </li>
+  );
+}
+
+function FilesPanel() {
+  const [files, setFiles] = useState<OutFile[]>([]);
+  const [expanded, setExpanded] = useState(true);
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const r = await fetch("/files");
+        if (!r.ok) return;
+        const j = (await r.json()) as OutFile[];
+        if (active) setFiles(j);
+      } catch { }
+    };
+    load();
+    const iv = setInterval(load, 5000);
+    return () => {
+      active = false;
+      clearInterval(iv);
+    };
+  }, []);
+  const fmtSize = (b: number) =>
+    b > 1e9 ? `${(b / 1e9).toFixed(2)} GB` : `${(b / 1e6).toFixed(1)} MB`;
+  return (
+    <div className="mb-6 overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center justify-between border-b border-neutral-800 px-4 py-2 hover:bg-neutral-800/50"
+      >
+        <span className="text-sm font-medium text-neutral-200">
+          Outputs <span className="text-neutral-500">({files.length})</span>
+        </span>
+        <span className="font-mono text-xs text-neutral-500">{expanded ? "▾" : "▸"}</span>
+      </button>
+      {expanded && (
+        <div className="divide-y divide-neutral-800">
+          {files.length === 0 ? (
+            <div className="px-4 py-3 text-xs text-neutral-500">No mp4s in out/ yet.</div>
+          ) : (
+            files.map((f) => (
+              <div key={f.name} className="flex flex-wrap items-center gap-3 px-4 py-2 text-sm">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-mono text-xs text-neutral-200">{f.name}</div>
+                  <div className="font-mono text-[10px] text-neutral-500">
+                    {new Date(f.created_ms).toLocaleString()} · {fmtSize(f.size)}
+                  </div>
+                </div>
+                <a
+                  href={`/files/${encodeURIComponent(f.name)}`}
+                  download={f.name}
+                  className="rounded-md bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-500"
+                >
+                  download
+                </a>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

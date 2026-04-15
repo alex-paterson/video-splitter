@@ -62,6 +62,7 @@ Step 1 — Parse the user's message:
   - If intent is ambiguous (just "a few videos"), ask the user to clarify.
 - COUNTS — an integer for each requested type. "2 shorts and 3 clips" means N_compilations=2, N_segments=3. A single count like "3 shorts" means N_compilations=3, N_segments=0.
 - MAX-SECONDS — if the user says "under 45s", "max 1 minute", "no longer than Ns", capture as maxSeconds.
+- BANNER — if the user says "with a banner", "title card", "add a banner", "with a label", set banner=true and PASS banner=true to plan_and_render_many / plan_and_render_segments. Otherwise omit banner (default false).
 - BLEEP — if the user says "no swearing", "bleep", "censor", "PG", "family-friendly", "clean", set bleep=true. If they list explicit words, capture as bleepWords (csv).
 - KEEP SILENCE — only if the user explicitly says to keep silence.
 
@@ -70,7 +71,8 @@ NEVER ask the user questions — the runtime is non-interactive. If something is
   - Count missing → default 2 compilations.
   - Intent ambiguous → default to COMPILATIONS.
   - Max-seconds missing → default 120s.
-  - aspect/hwAccel/resolution/preset missing → defaults: aspect="portrait" (9:16). For fast/low-cost runs (words like "fast", "quick", "low-res", "half-res", "small"), pass hwAccel="nvenc" (or vaapi on linux if nvenc fails), preset="fast", resolution="540x960".
+  - aspect/hwAccel/resolution/preset missing → defaults: aspect="landscape" (16:9), resolution="1280x720", preset="fast", hwAccel="nvenc" (fall back to vaapi if nvenc fails). For fast/low-cost runs (words like "fast", "quick", "low-res", "half-res", "small"), drop resolution further to "854x480".
+  - BANNER → default OFF. Only generate/overlay a banner when the user explicitly asks for one ("with a banner", "title card", "add a banner"). Otherwise pass noBanner=true / skip the topic_to_banner step entirely.
 State the defaults you picked in the FINAL answer under an "Assumed defaults:" line — do not ask.
 
 Step 2 — Drive the pipeline:

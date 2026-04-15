@@ -3,8 +3,7 @@ import { buildModel, HARD_RULES } from "./shared.js";
 import {
   segmentRender,
   videoRemoveSilence,
-  transcriptToBleepPlan,
-  videoApplyBleep,
+  videoBleep,
   topicToBanner,
 } from "../tools/commands.js";
 import { readFile } from "../tools/fs-tools.js";
@@ -20,8 +19,7 @@ export function makeSegmentAgent() {
     tools: [
       segmentRender,
       videoRemoveSilence,
-      transcriptToBleepPlan,
-      videoApplyBleep,
+      videoBleep,
       topicToBanner,
       segmentEstimateDuration,
       readFile,
@@ -34,10 +32,10 @@ You are the SegmentPlanner. You take ONE .segment.json and produce ONE polished 
 Procedure:
 1. read_file the .segment.json to learn the source video path (the "source" field — must be the ORIGINAL MKV). Always call segment_estimate_duration to get the phrase-sum estimate of post-silence-strip duration — NEVER guess durations yourself; LLMs are bad at arithmetic.
 2. If the segment file is actually a sibling .rejected.json (or the invocation surfaces a DISCARDED line from the scout), your final answer MUST be a single line "DISCARDED: <reason>". Do not render.
-3. Before rendering, call topic_to_banner with topic=<the segment's title>, description=<the segment's "rationale" field — the longer summary of what happens>, and output=<sibling .banner.png> to generate a pictorial PNG grounded in the segment's actual content. Skip only if the user explicitly asks for "no banner".
-4. Call segment_render with input=<source>, segment=<.segment.json path>, aspect="9:16" (portrait), and banner=<the banner.png> so the title is overlaid at top-center. This writes an MP4 next to the source.
+3. BANNER IS OPT-IN. Skip this step entirely unless the invocation explicitly asks for a banner / title card. Otherwise, call topic_to_banner with topic=<title>, description=<rationale>, output=<sibling .banner.png>.
+4. Call segment_render with input=<source>, segment=<.segment.json path>. Defaults: aspect="landscape", resolution="1280x720", preset="fast", hwAccel="nvenc" (fall back to vaapi on error). Only pass banner=<png> if step 3 generated one.
 5. By default, call video_remove_silence on that MP4 with reencode=true. Skip ONLY if the invocation explicitly says to keep silence.
-6. If the invocation says to bleep/censor/profanity (or provides a words list), call transcript_to_bleep_plan on the transcript referenced by the segment source (derive .transcript.json next to the source; or use the path in the invocation). Then call video_apply_bleep on the silence-stripped MP4 with the resulting .bleep.json (mode="mute"). Return the .bleeped.mp4 path.
+6. If the invocation says to bleep/censor/profanity (or provides a words list), as the FINAL step call video_bleep on the silence-stripped MP4. Pass auto=true unless words were given; if words were given, pass them as the "words" argument. video_bleep re-transcribes the cut itself with word-level timestamps, so bleep timing is accurate to the final output. Return the resulting .bleeped.mp4 path.
 7. Return ONLY the final MP4 path (bleeped if applicable, else silence-stripped, else raw rendered clip) as your final answer.
 `.trim(),
   });

@@ -19,7 +19,8 @@
     "topic-to-banner": "tsx src/commands/topic-to-banner.ts",
     "transcript-to-bleep-plan": "tsx src/commands/transcript-to-bleep-plan.ts",
     "video-apply-bleep": "tsx src/commands/video-apply-bleep.ts",
-    "server": "tsx src/server.ts",
+    "video-bleep": "tsx src/commands/video-bleep.ts",
+    "server": "tsx watch src/server.ts",
     "frontend": "npm --prefix frontend run dev",
     "dev": "concurrently -n server,frontend -c cyan,magenta \"npm run server\" \"npm run frontend\"",
     "help": "tsx src/commands/help.ts"
@@ -38,7 +39,8 @@
     "compilation-render": "./src/commands/compilation-render.ts",
     "topic-to-banner": "./src/commands/topic-to-banner.ts",
     "transcript-to-bleep-plan": "./src/commands/transcript-to-bleep-plan.ts",
-    "video-apply-bleep": "./src/commands/video-apply-bleep.ts"
+    "video-apply-bleep": "./src/commands/video-apply-bleep.ts",
+    "video-bleep": "./src/commands/video-bleep.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",

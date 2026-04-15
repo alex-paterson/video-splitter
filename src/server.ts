@@ -8,9 +8,14 @@
 
 import "dotenv/config";
 import http from "http";
+import fs from "fs";
+import path from "path";
 import { randomUUID } from "crypto";
 import { makeOrchestratorAgent } from "./agents/orchestrator.js";
 import { bus, BusEvent } from "./lib/event-bus.js";
+
+const OUT_DIR = path.resolve(new URL("../out", import.meta.url).pathname);
+fs.mkdirSync(OUT_DIR, { recursive: true });
 
 const PORT = parseInt(process.env.PORT ?? "8787");
 
@@ -40,19 +45,42 @@ const origErrWrite = process.stderr.write.bind(process.stderr);
 // Recursion guard: subscriber handlers may write to stderr, which would re-enter
 // the bus and loop. While a publish is in flight, skip teeing.
 let teeDepth = 0;
-function dbg(msg: string): void {
-  origErrWrite(`[server-debug] ${msg}\n`);
+function ts(): string {
+  const d = new Date();
+  const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
 }
+function dbg(msg: string): void {
+  origErrWrite(`[${ts()}] [server-debug] ${msg}\n`);
+}
+
+const teeBuf: Record<"stdout" | "stderr", string> = { stdout: "", stderr: "" };
+const atLineStart: Record<"stdout" | "stderr", boolean> = { stdout: true, stderr: true };
 
 function teeWrite(stream: "stdout" | "stderr", orig: typeof origOutWrite) {
   return (chunk: unknown, ...rest: unknown[]): boolean => {
-    // Always write to the underlying fd first so terminal output is immediate.
+    const s = typeof chunk === "string" ? chunk : Buffer.isBuffer(chunk) ? chunk.toString() : String(chunk);
+    // Build a timestamp-prefixed copy for the underlying fd (terminal/log).
+    let stamped = "";
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (atLineStart[stream] && ch !== "\n") {
+        stamped += `[${ts()}] `;
+        atLineStart[stream] = false;
+      }
+      stamped += ch;
+      if (ch === "\n") atLineStart[stream] = true;
+    }
     // @ts-expect-error variadic passthrough
-    const result = orig(chunk, ...rest);
+    const result = orig(stamped, ...rest);
     if (teeDepth === 0) {
-      const s = typeof chunk === "string" ? chunk : Buffer.isBuffer(chunk) ? chunk.toString() : String(chunk);
-      for (const line of s.split("\n")) {
-        if (line.length > 0) {
+      teeBuf[stream] += s;
+      const idx = teeBuf[stream].lastIndexOf("\n");
+      if (idx >= 0) {
+        const complete = teeBuf[stream].slice(0, idx);
+        teeBuf[stream] = teeBuf[stream].slice(idx + 1);
+        for (const line of complete.split("\n")) {
+          if (line.length === 0) continue;
           teeDepth++;
           try {
             bus.publish({ type: "stdio", stream, run_id: bus.getCurrentRunId(), line });
@@ -141,6 +169,13 @@ const server = http.createServer(async (req, res) => {
     res.flushHeaders();
     res.write(": connected\n\n");
 
+    // Replay backlog so late-connecting clients see prior events.
+    const backlog = bus.getBacklog();
+    for (const ev of backlog) {
+      res.write(`data: ${JSON.stringify(ev)}\n\n`);
+    }
+    dbg(`/events replayed backlog (${backlog.length} events)`);
+
     let delivered = 0;
     const unsubscribe = bus.subscribe((ev: BusEvent) => {
       const wrote = res.write(`data: ${JSON.stringify(ev)}\n\n`);
@@ -158,6 +193,44 @@ const server = http.createServer(async (req, res) => {
       clearInterval(keepAlive);
       unsubscribe();
     });
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/files") {
+    try {
+      const entries = fs
+        .readdirSync(OUT_DIR, { withFileTypes: true })
+        .filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".mp4"))
+        .map((e) => {
+          const st = fs.statSync(path.join(OUT_DIR, e.name));
+          return { name: e.name, size: st.size, created_ms: st.mtimeMs };
+        })
+        .sort((a, b) => b.created_ms - a.created_ms);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(entries));
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: String(e) }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url?.startsWith("/files/")) {
+    const raw = decodeURIComponent(req.url.slice("/files/".length));
+    const name = path.basename(raw);
+    const full = path.join(OUT_DIR, name);
+    if (!full.startsWith(OUT_DIR + path.sep) || !fs.existsSync(full)) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+      return;
+    }
+    const st = fs.statSync(full);
+    res.writeHead(200, {
+      "Content-Type": "video/mp4",
+      "Content-Length": String(st.size),
+      "Content-Disposition": `attachment; filename="${name.replace(/"/g, "")}"`,
+    });
+    fs.createReadStream(full).pipe(res);
     return;
   }
 

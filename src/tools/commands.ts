@@ -107,6 +107,7 @@ export const compilationRender = cliTool({
     aspect: z.string().optional(),
     resolution: z.string().optional().describe("Override output WxH, e.g. 540x960 for half-res"),
     preset: z.string().optional().describe("ffmpeg preset (ultrafast|fast|medium|slow)"),
+    banner: z.string().optional().describe("Optional PNG overlaid centered on the video"),
     output: z.string().optional(),
   }),
 });
@@ -199,6 +200,23 @@ export const videoApplyBleep = cliTool({
     input: z.string(),
     plan: z.string().describe("Path to .bleep.json"),
     mode: z.string().optional().describe("mute | beep | cut (default mute)"),
+    output: z.string().optional(),
+  }),
+});
+
+export const videoBleep = cliTool({
+  name: "video_bleep",
+  description:
+    "End-of-pipeline profanity bleeper. Transcribes the given MP4 itself (word-level timestamps), picks target words (--auto or --words), and mutes/beeps them. Writes <base>.bleeped.mp4 and publishes it to out/, replacing the pre-bleep file.",
+  script: "src/commands/video-bleep.ts",
+  positional: ["input"],
+  boolFlags: ["auto"],
+  input: z.object({
+    input: z.string().describe("Path to final MP4 (post-silence-strip)"),
+    words: z.string().optional().describe("Comma-separated words to bleep"),
+    auto: z.boolean().optional().describe("Let Claude pick profanities from the transcribed clip"),
+    topic: z.string().optional(),
+    mode: z.string().optional().describe("mute | beep (default mute)"),
     output: z.string().optional(),
   }),
 });

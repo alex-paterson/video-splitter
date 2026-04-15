@@ -38,7 +38,7 @@ program
   .option("--crf <n>", "Output CRF quality", "18")
   .option("--preset <preset>", "ffmpeg encoding preset", "medium")
   .option("--threads <n>", "ffmpeg thread count (0 = auto)", "0")
-  .option("--banner <png>", "Optional PNG overlaid at top-center, scaled to video width");
+  .option("--banner <png>", "Optional PNG overlaid centered on the video (fit inside 60% W × 40% H)");
 
 if (process.argv.length <= 2) { program.outputHelp(); process.exit(0); }
 program.parse();
@@ -114,7 +114,10 @@ async function main() {
   }
 
   const clips = compilation.clips;
-  const totalDuration = clips.reduce((s, c) => s + c.end_s - c.start_s, 0);
+  const LAST_CLIP_TAIL_PAD_S = 0.5;
+  const totalDuration =
+    clips.reduce((s, c) => s + c.end_s - c.start_s, 0) +
+    (clips.length > 0 ? LAST_CLIP_TAIL_PAD_S : 0);
 
   process.stderr.write(`Topic: "${compilation.topic}"\n`);
   process.stderr.write(`Source: ${sourcePath}\n`);
@@ -143,11 +146,12 @@ async function main() {
   const filterParts: string[] = [];
   for (let i = 0; i < clips.length; i++) {
     const { start_s, end_s } = clips[i];
+    const endAdj = i === clips.length - 1 ? end_s + LAST_CLIP_TAIL_PAD_S : end_s;
     filterParts.push(
-      `[0:v]trim=start=${start_s.toFixed(6)}:end=${end_s.toFixed(6)},setpts=PTS-STARTPTS,${spatialFilter}[v${i}]`
+      `[0:v]trim=start=${start_s.toFixed(6)}:end=${endAdj.toFixed(6)},setpts=PTS-STARTPTS,${spatialFilter}[v${i}]`
     );
     filterParts.push(
-      `[0:a]atrim=start=${start_s.toFixed(6)}:end=${end_s.toFixed(6)},asetpts=PTS-STARTPTS[a${i}]`
+      `[0:a]atrim=start=${start_s.toFixed(6)}:end=${endAdj.toFixed(6)},asetpts=PTS-STARTPTS[a${i}]`
     );
   }
   const concatInputs = clips.map((_, i) => `[v${i}][a${i}]`).join("");
@@ -156,8 +160,13 @@ async function main() {
     `${concatInputs}concat=n=${clips.length}:v=1:a=1[${vconcat}][aout]`
   );
   if (opts.banner) {
-    filterParts.push(`[1:v]scale=${outW}:-1[bnr]`);
-    filterParts.push(`[vcat][bnr]overlay=(main_w-overlay_w)/2:0[vout]`);
+    // Fit banner inside 60% width × 40% height of frame, keep aspect, center it.
+    const maxW = Math.round(outW * 0.6);
+    const maxH = Math.round(outH * 0.4);
+    filterParts.push(
+      `[1:v]scale=${maxW}:${maxH}:force_original_aspect_ratio=decrease[bnr]`
+    );
+    filterParts.push(`[vcat][bnr]overlay=20:20:format=auto[vout]`);
   }
 
   const compBase = path.basename(compilationPath).replace(/\.compilation\.json$/, "");
