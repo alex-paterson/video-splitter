@@ -20,6 +20,7 @@ export async function streamAgentWithReasoning(
 
   // Coalesce textDelta fragments so we don't fire an SSE event per token.
   let pending = "";
+  let lastEmittedChar = "";
   let flushTimer: NodeJS.Timeout | null = null;
   const MAX_BUFFER_CHARS = 200;
   const FLUSH_MS = 80;
@@ -28,6 +29,7 @@ export async function streamAgentWithReasoning(
     if (pending.length === 0) return;
     const text = pending;
     pending = "";
+    lastEmittedChar = text.slice(-1);
     bus.publish({ type: "subagent_reasoning", agent: agentId, label, text });
   };
   const pushDelta = (text: string) => {
@@ -35,6 +37,12 @@ export async function streamAgentWithReasoning(
     pending += text;
     if (pending.length >= MAX_BUFFER_CHARS) { flush(); return; }
     if (!flushTimer) flushTimer = setTimeout(flush, FLUSH_MS);
+  };
+  const emitSeparator = () => {
+    flush();
+    if (lastEmittedChar === "\n" || lastEmittedChar === "") return;
+    lastEmittedChar = "\n";
+    bus.publish({ type: "subagent_reasoning", agent: agentId, label, text: "\n" });
   };
 
   try {
@@ -61,8 +69,7 @@ export async function streamAgentWithReasoning(
       if (inner?.type === "modelContentBlockDeltaEvent" && inner.delta?.type === "textDelta") {
         pushDelta(inner.delta.text ?? "");
       } else if (inner?.type === "modelContentBlockStopEvent") {
-        flush();
-        bus.publish({ type: "subagent_reasoning", agent: agentId, label, text: "\n" });
+        emitSeparator();
       }
     } else if (ev?.type === "contentBlockEvent") {
       const cb = ev.contentBlock;
@@ -110,6 +117,32 @@ export async function streamAgentWithReasoning(
     flush();
   }
   return result;
+  });
+}
+
+/**
+ * Wrap a subagent Agent as a tool so it renders as its own SubagentGroup in
+ * the frontend (with streamed thinking). Without this, the SDK's built-in
+ * agent-as-tool wrapper calls the child silently, hiding its thinking.
+ */
+export function makeSubagentTool(opts: {
+  name: string;
+  description: string;
+  makeAgent: () => Agent;
+}) {
+  return tool({
+    name: opts.name,
+    description: opts.description,
+    inputSchema: z.object({
+      prompt: z.string().describe("Natural-language instruction for the subagent."),
+    }),
+    callback: async ({ prompt }: { prompt: string }, ctx?: ToolCtx) => {
+      const sig = getCancelSignal(ctx);
+      const result = await invokeSubagent(opts.makeAgent(), opts.name, prompt, sig);
+      return typeof result === "string"
+        ? result
+        : (result as { content?: string }).content ?? JSON.stringify(result);
+    },
   });
 }
 

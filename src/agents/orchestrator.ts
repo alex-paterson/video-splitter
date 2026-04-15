@@ -11,16 +11,37 @@ import {
   makeTranscribeManyTool,
   makeTopicScoutManyTool,
   makeSegmentScoutManyTool,
+  makeSubagentTool,
 } from "../tools/fan-out.js";
 import { readFile, listDir, projectOverview } from "../tools/fs-tools.js";
 import { memoryRead, memoryAppend } from "../tools/memory.js";
 
 export function makeOrchestratorAgent() {
-  const transcriber = makeTranscriberAgent();
-  const topicScout = makeTopicScoutAgent();
-  const compilation = makeCompilationAgent();
-  const segmentScout = makeSegmentScoutAgent();
-  const segment = makeSegmentAgent();
+  const transcriber = makeSubagentTool({
+    name: "agent_transcriber",
+    description: "Transcribe ONE source video (original MKV). Input: a natural-language prompt naming the source path. Returns the .transcript.json path.",
+    makeAgent: makeTranscriberAgent,
+  });
+  const topicScout = makeSubagentTool({
+    name: "agent_topic_scout",
+    description: "Scout N topics from ONE .transcript.json. Input: natural-language prompt with transcript path, count, and optional maxSeconds. Returns one .topic.json path per topic.",
+    makeAgent: makeTopicScoutAgent,
+  });
+  const compilation = makeSubagentTool({
+    name: "agent_compilation_planner",
+    description: "Plan, render, and silence-strip ONE compilation from a .topic.json, or refine an existing .compilation.json. Input: natural-language prompt. Returns the final MP4 path.",
+    makeAgent: makeCompilationAgent,
+  });
+  const segmentScout = makeSubagentTool({
+    name: "agent_segment_scout",
+    description: "Scout N standalone segments from ONE .transcript.json. Input: natural-language prompt with transcript path, count, and optional maxSeconds. Returns .segment.json paths.",
+    makeAgent: makeSegmentScoutAgent,
+  });
+  const segment = makeSubagentTool({
+    name: "agent_segment_planner",
+    description: "Render and silence-strip ONE segment from a .segment.json. Input: natural-language prompt. Returns the final MP4 path.",
+    makeAgent: makeSegmentAgent,
+  });
   const planAndRenderMany = makePlanAndRenderManyTool(makeCompilationAgent);
   const planAndRenderSegments = makePlanAndRenderSegmentsTool(makeSegmentAgent);
   const transcribeMany = makeTranscribeManyTool(makeTranscriberAgent);

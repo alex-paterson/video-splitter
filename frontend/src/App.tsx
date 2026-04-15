@@ -237,6 +237,10 @@ export function App() {
             <main data-section="main" className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
               <aside data-section="sidebar" className="flex flex-col gap-6 lg:sticky lg:top-16 lg:self-start">
               <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-3">
+                <div data-block="status-bar" className="mb-3 flex items-center justify-end gap-4">
+                  <RunningIndicator running={!!activeRunId} />
+                  <StatusDot status={status} />
+                </div>
                 <textarea
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
@@ -293,10 +297,6 @@ export function App() {
               />
               </aside>
               <section data-section="events" className="flex flex-col gap-6">
-              <div data-block="status-bar" className="flex items-center justify-end gap-4">
-                <RunningIndicator running={!!activeRunId} />
-                <StatusDot status={status} />
-              </div>
               {events.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-neutral-800 p-10 text-center text-sm text-neutral-500">
                   No events yet. Submit a prompt above to start.
