@@ -56,6 +56,8 @@ export function App() {
   }, [defaultCollapsed]);
   const [filterLanguage, setFilterLanguage] = useState(true);
   const [safeForWork, setSafeForWork] = useState(true);
+  const [hwAccel, setHwAccel] = useState<"auto" | "nvenc" | "vaapi" | "videotoolbox" | "none">("auto");
+  const [connectTick, setConnectTick] = useState(0);
   const [allCollapsed, setAllCollapsed] = useState(false);
   const [collapseTick, setCollapseTick] = useState(0);
   const esRef = useRef<EventSource | null>(null);
@@ -92,16 +94,22 @@ export function App() {
   const runPrompt = async () => {
     if (!prompt.trim() || running) return;
     setRunning(true);
+    setConnectTick((t) => t + 1);
     try {
       const parts: string[] = [];
       if (filterLanguage) {
         parts.push("Bleep curse words (profanity) in the final video output.");
       }
+      if (hwAccel === "none") {
+        parts.push("Hardware acceleration: do NOT use any hwAccel — omit the hwAccel arg entirely (CPU encode) for every segment_render / compilation_render call.");
+      } else if (hwAccel !== "auto") {
+        parts.push(`Hardware acceleration: use hwAccel="${hwAccel}" for every segment_render / compilation_render call. Do not fall back to a different backend.`);
+      }
       if (safeForWork) {
         parts.push(
-          "Keep it safe-for-work: avoid selecting clips with graphic sexual content, hard drugs, or slurs. " +
-          "However, do NOT discard phrases just because they mention mild/borderline topics (e.g. 'I'm going to go hit a bong', casual drinking, mild innuendo). " +
-          "Only individual curse words should be bleeped — the surrounding phrases stay in."
+          "Keep it safe-for-work: when SELECTING clips/topics/segments, DISCARD any phrase that is sexual in nature, about drugs (incl. bongs/weed), or otherwise offensive. " +
+          "Do NOT discard a phrase just because it contains a curse word — profanity is bleeped downstream. " +
+          "Safe-for-work applies to selection only; it does not add any extra censoring beyond that."
         );
       }
       const suffix = parts.length ? "\n\n" + parts.join("\n") : "";
@@ -170,7 +178,7 @@ export function App() {
       es.close();
       esRef.current = null;
     };
-  }, []);
+  }, [connectTick]);
 
   useEffect(() => {
     let nullStreak = 0;
@@ -291,6 +299,8 @@ export function App() {
                   setFilterLanguage={setFilterLanguage}
                   safeForWork={safeForWork}
                   setSafeForWork={setSafeForWork}
+                  hwAccel={hwAccel}
+                  setHwAccel={setHwAccel}
                 />
               </aside>
               <section data-section="events" className="flex flex-col gap-6">
@@ -824,6 +834,8 @@ function AdvancedSettings({
   setFilterLanguage,
   safeForWork,
   setSafeForWork,
+  hwAccel,
+  setHwAccel,
 }: {
   hideStdio: boolean;
   setHideStdio: (v: boolean) => void;
@@ -833,6 +845,8 @@ function AdvancedSettings({
   setFilterLanguage: (v: boolean) => void;
   safeForWork: boolean;
   setSafeForWork: (v: boolean) => void;
+  hwAccel: "auto" | "nvenc" | "vaapi" | "videotoolbox" | "none";
+  setHwAccel: (v: "auto" | "nvenc" | "vaapi" | "videotoolbox" | "none") => void;
 }) {
   const [open, setOpen] = useState(true);
   const item = (checked: boolean, onChange: (v: boolean) => void, label: string) => (
@@ -862,6 +876,20 @@ function AdvancedSettings({
           {item(safeForWork, setSafeForWork, "Safe for work")}
           {item(hideStdio, setHideStdio, "Hide stdio blocks")}
           {item(defaultCollapsed, setDefaultCollapsed, "Collapse blocks by default")}
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
+            <span>HW accel</span>
+            <select
+              value={hwAccel}
+              onChange={(e) => setHwAccel(e.target.value as typeof hwAccel)}
+              className="rounded border border-neutral-700 bg-neutral-800 px-1 py-0.5 font-mono text-xs text-neutral-200"
+            >
+              <option value="auto">auto (agent default)</option>
+              <option value="nvenc">nvenc</option>
+              <option value="vaapi">vaapi</option>
+              <option value="videotoolbox">videotoolbox</option>
+              <option value="none">none (CPU)</option>
+            </select>
+          </label>
         </div>
       )}
     </div>

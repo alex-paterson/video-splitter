@@ -13,7 +13,7 @@ import {
   makeSegmentScoutManyTool,
   makeSubagentTool,
 } from "../tools/fan-out.js";
-import { readFile, listDir, projectOverview } from "../tools/fs-tools.js";
+import { readFile, listDir, projectOverview, stageSource, stageSources } from "../tools/fs-tools.js";
 import { memoryRead, memoryAppend } from "../tools/memory.js";
 
 export function makeOrchestratorAgent() {
@@ -67,6 +67,8 @@ export function makeOrchestratorAgent() {
       readFile,
       listDir,
       projectOverview,
+      stageSource,
+      stageSources,
       memoryRead,
       memoryAppend,
     ],
@@ -120,6 +122,7 @@ NEVER ask the user questions — the runtime is non-interactive. If something is
 State the defaults you picked in the FINAL answer under an "Assumed defaults:" line — do not ask.
 
 Step 2 — Drive the pipeline:
+0. STAGE every source video into out/ FIRST — this step is MANDATORY for every production run (any run that will transcribe, scout, or render). Call stage_sources(sources=[...all resolved source paths...]) EXACTLY ONCE with the full list, even if there is only one source. Use the returned out/*.mkv paths everywhere downstream (transcribe, scout, render). Never pass a non-out/ path to Transcriber or any fan-out tool. If stage_sources is skipped, artifacts will land in the wrong directory and the run is broken — so do not skip.
 1. Transcribe source(s):
      - With exactly ONE source video, call Transcriber.
      - With 2 OR MORE source videos, you MUST call agents_transcribe_many(sources=[...all paths...]) ONCE with the full list. DO NOT loop and call Transcriber sequentially — that is strictly slower and wastes time. Any time you have a list of source videos to transcribe, agents_transcribe_many is the ONLY correct choice.

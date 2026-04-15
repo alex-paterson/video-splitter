@@ -57,6 +57,55 @@ export const listDir = tool({
   },
 });
 
+export const stageSources = tool({
+  name: "stage_sources",
+  description:
+    "Copy one OR MORE source videos into out/ if they aren't already there. Accepts an array of absolute paths; returns a newline-separated list of the corresponding out/ paths. Call this ONCE at the start of every run, even for a single source, so all downstream artifacts (.transcript.json, .topic.json, .compilation.json, rendered MP4s) land in out/.",
+  inputSchema: z.object({
+    sources: z.array(z.string()).min(1).describe("Absolute paths to source video files"),
+  }),
+  callback: ({ sources }: { sources: string[] }) => {
+    const outDir = path.join(PROJECT_ROOT, "out");
+    fs.mkdirSync(outDir, { recursive: true });
+    const results: string[] = [];
+    for (const src of sources) {
+      const abs = path.isAbsolute(src) ? src : path.join(PROJECT_ROOT, src);
+      if (!fs.existsSync(abs)) {
+        results.push(`ERROR: not found: ${abs}`);
+        continue;
+      }
+      const dest = path.join(outDir, path.basename(abs));
+      if (path.resolve(abs) !== path.resolve(dest) && !fs.existsSync(dest)) {
+        fs.copyFileSync(abs, dest);
+      }
+      results.push(dest);
+    }
+    return results.join("\n");
+  },
+});
+
+export const stageSource = tool({
+  name: "stage_source",
+  description:
+    "Copy a source video into out/ if it isn't already there. Returns the absolute path inside out/. Call this for EVERY source video before transcribing/rendering — all downstream artifacts (.transcript.json, .topic.json, .compilation.json, rendered MP4s) will then land in out/ alongside it.",
+  inputSchema: z.object({
+    path: z.string().describe("Absolute path to the source video file"),
+  }),
+  callback: ({ path: p }: { path: string }) => {
+    const abs = path.isAbsolute(p) ? p : path.join(PROJECT_ROOT, p);
+    if (!fs.existsSync(abs)) return `ERROR: not found: ${abs}`;
+    const outDir = path.join(PROJECT_ROOT, "out");
+    fs.mkdirSync(outDir, { recursive: true });
+    const base = path.basename(abs);
+    const dest = path.join(outDir, base);
+    if (path.resolve(abs) === path.resolve(dest)) return dest;
+    if (!fs.existsSync(dest)) {
+      fs.copyFileSync(abs, dest);
+    }
+    return dest;
+  },
+});
+
 export const projectOverview = tool({
   name: "project_overview",
   description:
