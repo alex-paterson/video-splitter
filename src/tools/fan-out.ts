@@ -103,6 +103,15 @@ export async function streamAgentWithReasoning(
           ? ev.error.message
           : (ev.error as { message?: string }).message ?? String(ev.error)
         : undefined;
+      const result = (ev as unknown as { result?: { content?: Array<{ type?: string; text?: string; json?: unknown }> } }).result;
+      const output = result?.content
+        ?.map((c) => {
+          if (c.type === "textBlock") return c.text ?? "";
+          if (c.type === "jsonBlock") return JSON.stringify(c.json, null, 2);
+          return "";
+        })
+        .filter((s) => s.length > 0)
+        .join("\n");
       bus.publish({
         type: "agent_tool_call_end",
         agent: agentId,
@@ -110,6 +119,7 @@ export async function streamAgentWithReasoning(
         tool_name: ev.toolUse.name,
         tool_use_id: ev.toolUse.toolUseId,
         error: errMsg,
+        output: output && output.length > 0 ? output : undefined,
       });
     }
   }

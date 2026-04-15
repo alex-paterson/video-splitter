@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from "react";
+import React, { createContext, Fragment, useContext, useEffect, useRef, useState } from "react";
 
 type AgentEvent = {
   id: string;
@@ -208,7 +208,7 @@ export function App() {
 
   return (
     <DefaultCollapsedContext.Provider value={defaultCollapsed}>
-        <RunActiveContext.Provider value={!!activeRunId}>
+      <RunActiveContext.Provider value={!!activeRunId}>
         <CollapseContext.Provider value={{ allCollapsed, tick: collapseTick }}>
           <div className="min-h-screen bg-neutral-950 text-neutral-100">
             <header data-section="header" className="sticky top-0 z-10 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur">
@@ -236,98 +236,109 @@ export function App() {
 
             <main data-section="main" className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
               <aside data-section="sidebar" className="flex flex-col gap-6 lg:sticky lg:top-16 lg:self-start">
-              <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-3">
-                <textarea
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                      e.preventDefault();
-                      runPrompt();
-                    }
-                  }}
-                  placeholder={`e.g.
+                <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-3">
+                  <textarea
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                        e.preventDefault();
+                        runPrompt();
+                      }
+                    }}
+                    placeholder={`e.g.
   "make me 3 shorts from /home/alex/OBS/foo.mkv, max 60s each"
   "2 clips of the funniest moments from foo.mkv, portrait 9:16"
   "1 compilation about the bugs we hit, landscape 1080p, with banner"
   "90s highlight reel from foo.mkv, no swearing"
   "find the segment where we talk about auth and render it"
   "what's in foo.mkv? list the main topics"`}
-                  rows={14}
-                  className="w-full resize-y rounded-md bg-neutral-950 px-3 py-2 font-mono text-sm text-neutral-100 outline-none ring-1 ring-neutral-800 focus:ring-emerald-600"
-                />
-                <div className="mt-2 flex items-center justify-between">
-                  <div data-block="status-bar" className="flex items-center gap-4">
-                    <RunningIndicator running={!!activeRunId} />
-                    <StatusDot status={status} />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {activeRunId ? (
-                      <button
-                        onClick={cancelRun}
-                        className="rounded-md bg-red-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-500"
-                      >
-                        Cancel
-                      </button>
-                    ) : (
-                      <button
-                        onClick={runPrompt}
-                        disabled={running || !prompt.trim()}
-                        className="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-neutral-700"
-                      >
-                        {running ? "Submitting…" : "Run"}
-                      </button>
-                    )}
+                    rows={14}
+                    className="w-full resize-y rounded-md bg-neutral-950 px-3 py-2 font-mono text-sm text-neutral-100 outline-none ring-1 ring-neutral-800 focus:ring-emerald-600"
+                  />
+                  <div className="mt-2 flex items-center justify-between">
+                    <div data-block="status-bar" className="flex items-center gap-4">
+                      <RunningIndicator running={!!activeRunId} />
+                      <StatusDot status={status} />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {activeRunId ? (
+                        <button
+                          onClick={cancelRun}
+                          className="rounded-md bg-red-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-500"
+                        >
+                          Cancel
+                        </button>
+                      ) : (
+                        <button
+                          onClick={runPrompt}
+                          disabled={running || !prompt.trim()}
+                          className="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-neutral-700"
+                        >
+                          {running ? "Submitting…" : "Run"}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <FilesPanel />
-              <AdvancedSettings
-                hideStdio={hideStdio}
-                setHideStdio={setHideStdio}
-                defaultCollapsed={defaultCollapsed}
-                setDefaultCollapsed={setDefaultCollapsed}
-                filterLanguage={filterLanguage}
-                setFilterLanguage={setFilterLanguage}
-                safeForWork={safeForWork}
-                setSafeForWork={setSafeForWork}
-              />
+                <FilesPanel />
+                <AdvancedSettings
+                  hideStdio={hideStdio}
+                  setHideStdio={setHideStdio}
+                  defaultCollapsed={defaultCollapsed}
+                  setDefaultCollapsed={setDefaultCollapsed}
+                  filterLanguage={filterLanguage}
+                  setFilterLanguage={setFilterLanguage}
+                  safeForWork={safeForWork}
+                  setSafeForWork={setSafeForWork}
+                />
               </aside>
               <section data-section="events" className="flex flex-col gap-6">
-              {events.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-neutral-800 p-10 text-center text-sm text-neutral-500">
-                  No events yet. Submit a prompt above to start.
-                </div>
-              ) : (
-                <ol data-block="events-list" className="space-y-3">
-                  {groupEvents(events)
-                    .filter((g) => !(hideStdio && g.kind === "stdio"))
-                    .slice()
-                    .reverse()
-                    .sort((a, b) => {
-                      const ar = (a.kind === "tool" || a.kind === "subagent") && !a.closed ? 0 : 1;
-                      const br = (b.kind === "tool" || b.kind === "subagent") && !b.closed ? 0 : 1;
-                      return ar - br;
-                    })
-                    .map((g) =>
-                      g.kind === "tool" ? (
-                        <ToolGroup key={g.id} group={g} />
-                      ) : g.kind === "stdio" ? (
-                        <StdioGroup key={g.id} group={g} />
-                      ) : g.kind === "subagent" ? (
-                        <SubagentGroup key={g.id} group={g} />
-                      ) : (
-                        <EventBlock key={g.ev.id} ev={g.ev} />
-                      )
-                    )}
-                </ol>
-              )}
+                {events.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-neutral-800 p-10 text-center text-sm text-neutral-500">
+                    No events yet. Submit a prompt above to start.
+                  </div>
+                ) : (
+                  <ol data-block="events-list" className="space-y-3">
+                    {groupEvents(events)
+                      .filter((g) => !(hideStdio && g.kind === "stdio"))
+                      .slice()
+                      .reverse()
+                      .sort((a, b) => {
+                        const ar = (a.kind === "tool" || a.kind === "subagent") && !a.closed ? 0 : 1;
+                        const br = (b.kind === "tool" || b.kind === "subagent") && !b.closed ? 0 : 1;
+                        return ar - br;
+                      })
+                      .map((g) => {
+                        const isAgentStart = g.kind === "solo" && g.ev.type === "agent_start";
+                        const node =
+                          g.kind === "tool" ? (
+                            <ToolGroup key={g.id} group={g} />
+                          ) : g.kind === "stdio" ? (
+                            <StdioGroup key={g.id} group={g} />
+                          ) : g.kind === "subagent" ? (
+                            <SubagentGroup key={g.id} group={g} />
+                          ) : (
+                            <EventBlock key={g.ev.id} ev={g.ev} />
+                          );
+                        if (isAgentStart) {
+                          return (
+                            <Fragment key={g.kind === "solo" ? g.ev.id : (g as { id: string }).id}>
+                              {node}
+                              <div className="my-4 h-0.5 bg-neutral-700" />
+                            </Fragment>
+                          );
+                        }
+                        return node;
+                      })}
+                  </ol>
+                )}
               </section>
             </main>
           </div>
         </CollapseContext.Provider>
-        </RunActiveContext.Provider>
-        </DefaultCollapsedContext.Provider>
+      </RunActiveContext.Provider>
+    </DefaultCollapsedContext.Provider>
   );
 }
 
@@ -707,6 +718,7 @@ function SubagentGroup({ group }: { group: Extract<Group, { kind: "subagent" }> 
       startAt: number;
       endAt?: number;
       error?: string;
+      output?: string;
       cliLines: { line: string; stream?: string }[];
       cliExitCode?: number;
     };
@@ -722,7 +734,7 @@ function SubagentGroup({ group }: { group: Extract<Group, { kind: "subagent" }> 
       return cur;
     };
     for (const e of group.events) {
-      const d = (e.data as { tool_use_id?: string; tool_name?: string; input?: unknown; error?: string; script?: string; line?: string; code?: number } | null) ?? null;
+      const d = (e.data as { tool_use_id?: string; tool_name?: string; input?: unknown; error?: string; script?: string; line?: string; code?: number; output?: string } | null) ?? null;
       const id = d?.tool_use_id;
       if (!id) continue;
       if (e.type === "agent_tool_call_start") {
@@ -731,7 +743,7 @@ function SubagentGroup({ group }: { group: Extract<Group, { kind: "subagent" }> 
         cur.startAt = e.at;
       } else if (e.type === "agent_tool_call_end") {
         const cur = byId.get(id);
-        if (cur) { cur.endAt = e.at; cur.error = d.error; }
+        if (cur) { cur.endAt = e.at; cur.error = d.error; cur.output = d.output; }
       } else if (e.type === "tool_start") {
         ensure(id, d.script ?? "?", e.at);
       } else if (e.type === "tool_output_line") {
@@ -767,14 +779,14 @@ function SubagentGroup({ group }: { group: Extract<Group, { kind: "subagent" }> 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="font-mono text-xs text-neutral-500">{expanded ? "▾" : "▸"}</span>
           <span className="rounded bg-neutral-800 px-2 py-0.5 font-mono text-xs text-purple-300">
-            subagent
+            agent
           </span>
           <span className="rounded bg-neutral-800/70 px-2 py-0.5 font-mono text-xs text-neutral-300">
             {group.agent}
           </span>
-          <span className="truncate rounded bg-neutral-800/50 px-2 py-0.5 font-mono text-xs text-neutral-400">
+          {group.agent !== group.label && <span className="truncate rounded bg-neutral-800/50 px-2 py-0.5 font-mono text-xs text-neutral-400">
             {group.label}
-          </span>
+          </span>}
           <span className={`font-mono text-xs ${statusColor}`}>{status}</span>
           {duration !== undefined && (
             <span className="font-mono text-xs text-neutral-500">
@@ -904,6 +916,7 @@ function ToolCallItem({
     startAt: number;
     endAt?: number;
     error?: string;
+    output?: string;
     cliLines: { line: string; stream?: string }[];
     cliExitCode?: number;
   };
@@ -912,12 +925,14 @@ function ToolCallItem({
   const defaultCollapsed = useContext(DefaultCollapsedContext);
   const [open, setOpen] = useState(!defaultCollapsed);
   const [inputOpen, setInputOpen] = useState(false);
+  const [outputOpen, setOutputOpen] = useState(false);
   const lastTick = useRef(collapse.tick);
   useEffect(() => {
     if (lastTick.current === collapse.tick) return;
     lastTick.current = collapse.tick;
     setOpen(!collapse.allCollapsed);
     setInputOpen(false);
+    setOutputOpen(false);
   }, [collapse.tick]);
   const runActive = useContext(RunActiveContext);
   const open_ = tc.endAt === undefined;
@@ -981,12 +996,30 @@ function ToolCallItem({
           )}
         </div>
       )}
-      {open && tc.cliLines.length > 0 && (
-        <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words border-t border-neutral-800/50 px-4 py-2 font-mono text-xs leading-relaxed text-neutral-300">
-          {tc.cliLines.map((l, i) => (
-            <div key={i}>{l.line}</div>
-          ))}
-        </pre>
+      {open && (tc.output || tc.cliLines.length > 0) && (
+        <div data-block="tool-call-output" className="pl-6">
+          <button
+            onClick={(e) => { e.stopPropagation(); setOutputOpen((v) => !v); }}
+            className="flex w-full items-center gap-2 px-4 py-1 text-left hover:bg-neutral-800/40"
+          >
+            <span className="font-mono text-xs text-neutral-500">{outputOpen ? "▾" : "▸"}</span>
+            <span className="rounded bg-neutral-800 px-2 py-0.5 font-mono text-xs text-neutral-400">
+              Output
+            </span>
+          </button>
+          {outputOpen && tc.cliLines.length > 0 && (
+            <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words px-4 py-2 font-mono text-xs leading-relaxed text-neutral-500">
+              {tc.cliLines.map((l, i) => (
+                <div key={i}>{l.line}</div>
+              ))}
+            </pre>
+          )}
+          {outputOpen && tc.output && (
+            <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all px-4 pb-2 font-mono text-xs text-neutral-500">
+              {tc.output}
+            </pre>
+          )}
+        </div>
       )}
     </li>
   );
