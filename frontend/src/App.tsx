@@ -40,12 +40,29 @@ export function App() {
   const [prompt, setPrompt] = useState("");
   const [running, setRunning] = useState(false);
   const [lastRunId, setLastRunId] = useState<string | null>(null);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [wrap, setWrap] = useState(true);
   const [filterLanguage, setFilterLanguage] = useState(true);
   const [safeForWork, setSafeForWork] = useState(true);
   const [allCollapsed, setAllCollapsed] = useState(false);
   const [collapseTick, setCollapseTick] = useState(0);
   const esRef = useRef<EventSource | null>(null);
+
+  const cancelRun = async () => {
+    if (!activeRunId) return;
+    try {
+      await fetch("/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ run_id: activeRunId }),
+      });
+    } catch (e) {
+      setEvents((prev) => [
+        ...prev,
+        { id: `local-${++fallbackCounter}`, type: "error", data: String(e), at: Date.now() },
+      ]);
+    }
+  };
 
   const toggleAll = () => {
     setAllCollapsed((v) => !v);
@@ -77,6 +94,7 @@ export function App() {
       const j = await r.json();
       if (j.run_id) {
         setLastRunId(j.run_id);
+        setActiveRunId(j.run_id);
         setPrompt("");
       }
     } catch (e) {
@@ -109,6 +127,10 @@ export function App() {
       const type = typeof obj.type === "string" ? obj.type : "message";
       const busId = typeof obj.id === "string" ? obj.id : null;
       const at = typeof obj.ts === "number" ? obj.ts : Date.now();
+      const runId = typeof obj.run_id === "string" ? obj.run_id : null;
+      if (type === "agent_end" && runId) {
+        setActiveRunId((cur) => (cur === runId ? null : cur));
+      }
       setEvents((prev) => {
         if (busId !== null && prev.some((p) => p.id === busId)) return prev;
         const id = busId ?? `local-${++fallbackCounter}`;
@@ -195,13 +217,23 @@ export function App() {
                     {lastRunId ? `last run_id: ${lastRunId}` : "⌘/Ctrl+Enter to run"}
                   </span>
                 </div>
-                <button
-                  onClick={runPrompt}
-                  disabled={running || !prompt.trim()}
-                  className="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-neutral-700"
-                >
-                  {running ? "Submitting…" : "Run"}
-                </button>
+                <div className="flex items-center gap-2">
+                  {activeRunId && (
+                    <button
+                      onClick={cancelRun}
+                      className="rounded-md bg-red-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-500"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                  <button
+                    onClick={runPrompt}
+                    disabled={running || !prompt.trim()}
+                    className="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-neutral-700"
+                  >
+                    {running ? "Submitting…" : "Run"}
+                  </button>
+                </div>
               </div>
             </div>
             {events.length === 0 ? (

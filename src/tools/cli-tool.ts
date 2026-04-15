@@ -1,8 +1,24 @@
 import { tool } from "@strands-agents/sdk";
-import { spawn } from "child_process";
+import { spawn, ChildProcess } from "child_process";
 import path from "path";
 import { z, ZodObject, ZodRawShape } from "zod";
 import { bus } from "../lib/event-bus.js";
+
+const liveProcs: Map<string, Set<ChildProcess>> = new Map();
+
+export function killRun(runId: string): number {
+  const set = liveProcs.get(runId);
+  if (!set) return 0;
+  let n = 0;
+  for (const proc of set) {
+    try {
+      proc.kill("SIGTERM");
+      n++;
+    } catch { /* ignore */ }
+  }
+  liveProcs.delete(runId);
+  return n;
+}
 
 export const PROJECT_ROOT = path.resolve(
   path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..")
@@ -30,6 +46,12 @@ export function runCli(script: string, argv: string[]): Promise<string> {
       cwd: PROJECT_ROOT,
       env: process.env,
     });
+    const runId = bus.getCurrentRunId();
+    if (runId) {
+      let set = liveProcs.get(runId);
+      if (!set) { set = new Set(); liveProcs.set(runId, set); }
+      set.add(proc);
+    }
     let stdout = "";
     let stderrTail = "";
     let lineBuf = "";
@@ -57,6 +79,7 @@ export function runCli(script: string, argv: string[]): Promise<string> {
       reject(err);
     });
     proc.on("close", (code) => {
+      if (runId) liveProcs.get(runId)?.delete(proc);
       if (lineBuf.length > 0) {
         bus.publish({ type: "tool_output_line", script, line: lineBuf });
         lineBuf = "";

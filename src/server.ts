@@ -13,6 +13,7 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { makeOrchestratorAgent } from "./agents/orchestrator.js";
 import { bus, BusEvent } from "./lib/event-bus.js";
+import { killRun } from "./tools/cli-tool.js";
 
 const OUT_DIR = path.resolve(new URL("../out", import.meta.url).pathname);
 fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -231,6 +232,26 @@ const server = http.createServer(async (req, res) => {
       "Content-Disposition": `attachment; filename="${name.replace(/"/g, "")}"`,
     });
     fs.createReadStream(full).pipe(res);
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/cancel") {
+    try {
+      const body = (await readJsonBody(req)) as { run_id?: string };
+      const runId = body.run_id ?? bus.getCurrentRunId();
+      if (!runId) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "no run_id and no active run" }));
+        return;
+      }
+      const killed = killRun(runId);
+      bus.publish({ type: "error", run_id: runId, message: `Run cancelled by user (killed ${killed} subprocess(es))` });
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, run_id: runId, killed }));
+    } catch (e) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: String(e) }));
+    }
     return;
   }
 

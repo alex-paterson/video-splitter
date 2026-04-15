@@ -85,7 +85,9 @@ NEVER ask the user questions — the runtime is non-interactive. If something is
 State the defaults you picked in the FINAL answer under an "Assumed defaults:" line — do not ask.
 
 Step 2 — Drive the pipeline:
-1. Transcribe source(s): with ONE source video, call Transcriber. With 2+ source videos, call transcribe_many with the list so they run concurrently (capped at 4).
+1. Transcribe source(s):
+     - With exactly ONE source video, call Transcriber.
+     - With 2 OR MORE source videos, you MUST call transcribe_many(sources=[...all paths...]) ONCE with the full list. DO NOT loop and call Transcriber sequentially — that is strictly slower and wastes time. Any time you have a list of source videos to transcribe, transcribe_many is the ONLY correct choice.
 2. If N_compilations > 0:
      - With ONE transcript, call TopicScout(transcript, N_compilations, maxSeconds) → N .topic.json paths.
      - With 2+ transcripts, call topic_scout_many(transcripts, countPerTranscript=N_compilations, maxSeconds) → one group of .topic.json paths per transcript.
