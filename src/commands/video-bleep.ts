@@ -208,6 +208,7 @@ async function main() {
   } else {
     targets = buildWordsSet(opts.words!);
   }
+  targets.add("gay");
 
   const intervals: Interval[] = [];
   for (const w of wordsTs) {

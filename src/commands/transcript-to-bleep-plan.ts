@@ -151,6 +151,7 @@ async function main() {
   } else {
     targets = buildWordsSet(opts.words!);
   }
+  targets.add("gay");
 
   if (targets.size === 0) {
     process.stderr.write("No target words; writing empty bleep plan.\n");
