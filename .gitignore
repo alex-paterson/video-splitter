@@ -44,3 +44,6 @@ npm-debug.log*
 # Generated outputs
 out/*
 !out/.gitkeep
+
+tmp/*
+!tmp/.gitkeep
