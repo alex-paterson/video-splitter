@@ -15,6 +15,7 @@ import { makeOrchestratorAgent } from "./agents/orchestrator.js";
 import { streamAgentWithReasoning } from "./tools/fan-out.js";
 import { bus, BusEvent } from "./lib/event-bus.js";
 import { killRun, clearCancelled, isCancelled } from "./tools/cli-tool.js";
+import { appendMemoryEntry } from "./tools/memory.js";
 
 const runCancelRejects = new Map<string, (err: Error) => void>();
 
@@ -169,6 +170,14 @@ const server = http.createServer(async (req, res) => {
             duration_ms: Date.now() - orchStartedAt,
             error: msg,
           });
+          // Safety net: orchestrator may have died before its own memory_append.
+          // Record what we know so the next run still has context.
+          try {
+            const reason = isCancelled(run_id) ? "cancelled by user" : `failed: ${msg}`;
+            appendMemoryEntry(
+              `## Run ${reason}\n- Prompt: ${body.prompt!.slice(0, 500)}\n- Outcome: ${reason}`
+            );
+          } catch { /* ignore */ }
           if (isCancelled(run_id)) {
             bus.publish({ type: "agent_end", run_id, error: true, cancelled: true });
           } else {

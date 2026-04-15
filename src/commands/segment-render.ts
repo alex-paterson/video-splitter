@@ -14,6 +14,7 @@ import fs from "fs";
 import { ffprobe, getVideoStream, parseFraction, runFfmpeg } from "../../lib/ffmpeg.js";
 import { loadSegment, Segment, SegmentSchema } from "../../lib/transcript.js";
 import { ProgressReporter } from "../../lib/progress.js";
+import { TAIL_PAD_S } from "../../lib/whisper-pad.js";
 
 const ASPECT_PRESETS: Record<string, [number, number]> = {
   portrait: [9, 16],
@@ -244,7 +245,7 @@ async function main() {
   }
 
   // Determine output path
-  const segDuration = segment.end_s - segment.start_s;
+  const segDuration = segment.end_s - segment.start_s + TAIL_PAD_S;
   const ext = opts.format.startsWith(".") ? opts.format : `.${opts.format}`;
   const defaultOutput = path.join(
     path.dirname(inputPath),

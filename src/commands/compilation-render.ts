@@ -17,6 +17,7 @@ import {
 } from "../../lib/ffmpeg.js";
 import { loadCompilation } from "../../lib/transcript.js";
 import { ProgressReporter } from "../../lib/progress.js";
+import { TAIL_PAD_S } from "../../lib/whisper-pad.js";
 
 const ASPECT_PRESETS: Record<string, [number, number]> = {
   portrait: [9, 16],
@@ -114,10 +115,16 @@ async function main() {
   }
 
   const clips = compilation.clips;
-  const LAST_CLIP_TAIL_PAD_S = 0.5;
+  if (clips.length === 0) {
+    console.error(
+      `Error: compilation has 0 clips — nothing to render.\n` +
+      `  ${compilationPath}\n` +
+      `This usually means topic-to-compilation found no passages matching the topic's story in the transcript (likely topic/transcript mismatch or hallucinated story). Re-check the .topic.json story against the transcript before re-running.`
+    );
+    process.exit(1);
+  }
   const totalDuration =
-    clips.reduce((s, c) => s + c.end_s - c.start_s, 0) +
-    (clips.length > 0 ? LAST_CLIP_TAIL_PAD_S : 0);
+    clips.reduce((s, c) => s + c.end_s - c.start_s, 0) + clips.length * TAIL_PAD_S;
 
   process.stderr.write(`Topic: "${compilation.topic}"\n`);
   process.stderr.write(`Source: ${sourcePath}\n`);
@@ -146,7 +153,7 @@ async function main() {
   const filterParts: string[] = [];
   for (let i = 0; i < clips.length; i++) {
     const { start_s, end_s } = clips[i];
-    const endAdj = i === clips.length - 1 ? end_s + LAST_CLIP_TAIL_PAD_S : end_s;
+    const endAdj = end_s + TAIL_PAD_S;
     filterParts.push(
       `[0:v]trim=start=${start_s.toFixed(6)}:end=${endAdj.toFixed(6)},setpts=PTS-STARTPTS,${spatialFilter}[v${i}]`
     );

@@ -14,6 +14,17 @@ function splitEntries(raw: string): string[] {
     .filter((s) => s.length > 0);
 }
 
+export function appendMemoryEntry(summary: string): void {
+  const ts = new Date().toISOString();
+  const entry = `## ${ts}\n${summary.trim()}\n`;
+  let existing = "";
+  if (fs.existsSync(MEMORY_PATH)) existing = fs.readFileSync(MEMORY_PATH, "utf-8");
+  const entries = splitEntries(existing);
+  entries.push(entry);
+  const kept = entries.slice(-MAX_ENTRIES);
+  fs.writeFileSync(MEMORY_PATH, kept.join("\n---\n") + "\n");
+}
+
 export const memoryRead = tool({
   name: "memory_read",
   description:
@@ -37,15 +48,7 @@ export const memoryAppend = tool({
       ),
   }),
   callback: async ({ summary }: { summary: string }) => {
-    const ts = new Date().toISOString();
-    const entry = `## ${ts}\n${summary.trim()}\n`;
-    let existing = "";
-    if (fs.existsSync(MEMORY_PATH)) existing = fs.readFileSync(MEMORY_PATH, "utf-8");
-    const entries = splitEntries(existing);
-    entries.push(entry);
-    const kept = entries.slice(-MAX_ENTRIES);
-    const out = kept.join("\n---\n") + "\n";
-    fs.writeFileSync(MEMORY_PATH, out);
-    return `OK (${kept.length} entries retained)`;
+    appendMemoryEntry(summary);
+    return "OK";
   },
 });

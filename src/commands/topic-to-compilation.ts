@@ -209,6 +209,16 @@ async function main() {
   const clips = mergeClips(rawClips, mergeGap);
   const totalDuration = clips.reduce((s, c) => s + c.end_s - c.start_s, 0);
 
+  if (clips.length === 0) {
+    console.error(
+      `Error: 0 passages matched the topic's story in this transcript.\n` +
+      `  Topic:      "${topic.topic}"\n` +
+      `  Transcript: ${transcriptPath}\n` +
+      `The story likely doesn't match this footage (wrong transcript, or the topic/story was hallucinated). No .compilation.json was written. Re-check topic.story against the transcript before retrying.`
+    );
+    process.exit(1);
+  }
+
   process.stderr.write(
     `\nFound ${rawClips.length} passage(s) → ${clips.length} clip(s) after merging (${totalDuration.toFixed(1)}s total)\n`
   );
