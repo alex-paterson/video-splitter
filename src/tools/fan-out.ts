@@ -13,6 +13,27 @@ export async function streamAgentWithReasoning(
   return runCtx.run({ agentId, label }, async () => {
   const gen = agent.stream(prompt);
   let result: unknown;
+
+  // Coalesce textDelta fragments so we don't fire an SSE event per token.
+  let pending = "";
+  let flushTimer: NodeJS.Timeout | null = null;
+  const MAX_BUFFER_CHARS = 200;
+  const FLUSH_MS = 80;
+  const flush = () => {
+    if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+    if (pending.length === 0) return;
+    const text = pending;
+    pending = "";
+    bus.publish({ type: "subagent_reasoning", agent: agentId, label, text });
+  };
+  const pushDelta = (text: string) => {
+    if (!text) return;
+    pending += text;
+    if (pending.length >= MAX_BUFFER_CHARS) { flush(); return; }
+    if (!flushTimer) flushTimer = setTimeout(flush, FLUSH_MS);
+  };
+
+  try {
   while (true) {
     if (isCancelled(bus.getCurrentRunId())) {
       try { await gen.return(undefined as never); } catch { /* ignore */ }
@@ -27,16 +48,32 @@ export async function streamAgentWithReasoning(
       type?: string;
       contentBlock?: { type?: string; text?: string };
       toolUse?: { name?: string; toolUseId?: string; input?: unknown };
+      event?: { type?: string; delta?: { type?: string; text?: string } };
       result?: unknown;
       error?: { message?: string } | Error;
     };
-    if (ev?.type === "contentBlockEvent") {
+    if (ev?.type === "modelStreamUpdateEvent") {
+      const inner = ev.event;
+      if (inner?.type === "modelContentBlockDeltaEvent" && inner.delta?.type === "textDelta") {
+        pushDelta(inner.delta.text ?? "");
+      } else if (inner?.type === "modelContentBlockStopEvent") {
+        flush();
+        bus.publish({ type: "subagent_reasoning", agent: agentId, label, text: "\n" });
+      }
+    } else if (ev?.type === "contentBlockEvent") {
       const cb = ev.contentBlock;
-      if (cb?.type === "reasoningBlock" || cb?.type === "textBlock") {
+      // textBlock is already streamed via modelStreamUpdateEvent textDelta above;
+      // only fall back to publishing here for reasoningBlock (unused with the
+      // current OpenAI adapter, but correct if an Anthropic model is swapped in).
+      if (cb?.type === "reasoningBlock") {
         const text = cb.text ?? "";
-        if (text) bus.publish({ type: "subagent_reasoning", agent: agentId, label, text });
+        if (text) {
+          flush();
+          bus.publish({ type: "subagent_reasoning", agent: agentId, label, text });
+        }
       }
     } else if (ev?.type === "beforeToolCallEvent" && ev.toolUse) {
+      flush();
       const store = runCtx.getStore();
       if (store) store.currentToolUseId = ev.toolUse.toolUseId;
       bus.publish({
@@ -64,6 +101,9 @@ export async function streamAgentWithReasoning(
         error: errMsg,
       });
     }
+  }
+  } finally {
+    flush();
   }
   return result;
   });

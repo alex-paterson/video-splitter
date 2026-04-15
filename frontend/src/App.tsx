@@ -17,6 +17,7 @@ const CollapseContext = createContext<{ allCollapsed: boolean; tick: number }>({
 });
 
 const DefaultCollapsedContext = createContext(false);
+const RunActiveContext = createContext(false);
 
 type OutFile = { name: string; size: number; created_ms: number };
 
@@ -157,9 +158,10 @@ export function App() {
 
   return (
     <DefaultCollapsedContext.Provider value={defaultCollapsed}>
+        <RunActiveContext.Provider value={!!activeRunId}>
         <CollapseContext.Provider value={{ allCollapsed, tick: collapseTick }}>
           <div className="min-h-screen bg-neutral-950 text-neutral-100">
-            <header className="sticky top-0 z-10 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur">
+            <header data-section="header" className="sticky top-0 z-10 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur">
               <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
                 <h1 className="text-lg font-semibold tracking-tight">Content Machine</h1>
                 <div className="flex items-center gap-4">
@@ -178,13 +180,12 @@ export function App() {
                   >
                     Clear
                   </button>
-                  <StatusDot status={status} />
                 </div>
               </div>
             </header>
 
-            <main className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-              <aside className="flex flex-col gap-6 lg:sticky lg:top-16 lg:self-start">
+            <main data-section="main" className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+              <aside data-section="sidebar" className="flex flex-col gap-6 lg:sticky lg:top-16 lg:self-start">
               <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-3">
                 <textarea
                   value={prompt}
@@ -241,13 +242,17 @@ export function App() {
                 setSafeForWork={setSafeForWork}
               />
               </aside>
-              <section className="flex flex-col gap-6">
+              <section data-section="events" className="flex flex-col gap-6">
+              <div data-block="status-bar" className="flex items-center justify-end gap-4">
+                <RunningIndicator running={!!activeRunId} />
+                <StatusDot status={status} />
+              </div>
               {events.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-neutral-800 p-10 text-center text-sm text-neutral-500">
                   No events yet. Submit a prompt above to start.
                 </div>
               ) : (
-                <ol className="space-y-3">
+                <ol data-block="events-list" className="space-y-3">
                   {groupEvents(events)
                     .filter((g) => !(hideStdio && g.kind === "stdio"))
                     .slice()
@@ -274,6 +279,7 @@ export function App() {
             </main>
           </div>
         </CollapseContext.Provider>
+        </RunActiveContext.Provider>
         </DefaultCollapsedContext.Provider>
   );
 }
@@ -304,8 +310,9 @@ function EventBlock({ ev }: { ev: AgentEvent }) {
             : "text-amber-400";
   const HeaderTag = (collapsible ? "button" : "div") as "button" | "div";
   return (
-    <li className="overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
+    <li data-block="event" data-event-type={ev.type} className="overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
       <HeaderTag
+        data-block-header="event"
         onClick={collapsible ? () => setExpanded((v) => !v) : undefined}
         className={`flex w-full items-center justify-between gap-3 border-b border-neutral-800 px-4 py-2 text-left ${collapsible ? "hover:bg-neutral-800/50" : ""
           }`}
@@ -531,8 +538,9 @@ function StdioGroup({ group }: { group: Extract<Group, { kind: "stdio" }> }) {
   const first = group.events[0];
   const last = group.events[group.events.length - 1];
   return (
-    <li className="overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
+    <li data-block="stdio-group" className="overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
       <button
+        data-block-header="stdio-group"
         onClick={() => setExpanded((v) => !v)}
         className="flex w-full items-center justify-between border-b border-neutral-800 px-4 py-2 hover:bg-neutral-800/50"
       >
@@ -583,20 +591,24 @@ function ToolGroup({ group }: { group: Extract<Group, { kind: "tool" }> }) {
   const lines = group.events.filter((e) => e.type === "tool_output_line");
   const code = (end?.data as { code?: number } | undefined)?.code;
   const duration = (end?.data as { duration_ms?: number } | undefined)?.duration_ms;
+  const runActive = useContext(RunActiveContext);
   const status = !group.closed
-    ? "running"
+    ? (runActive ? "running" : "cancelled")
     : code === 0
       ? "done"
       : `exit ${code}`;
   const statusColor =
     status === "running"
       ? "text-amber-400"
-      : status === "done"
-        ? "text-emerald-400"
-        : "text-red-400";
+      : status === "cancelled"
+        ? "text-neutral-500"
+        : status === "done"
+          ? "text-emerald-400"
+          : "text-red-400";
   return (
-    <li className="overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
+    <li data-block="tool-group" data-tool-script={group.script} data-tool-status={status} className="overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
       <button
+        data-block-header="tool-group"
         onClick={() => setExpanded((v) => !v)}
         className="flex w-full items-center justify-between border-b border-neutral-800 px-4 py-2 hover:bg-neutral-800/50"
       >
@@ -640,8 +652,7 @@ function SubagentGroup({ group }: { group: Extract<Group, { kind: "subagent" }> 
   const reasoning = group.events
     .filter((e) => e.type === "subagent_reasoning")
     .map((e) => ((e.data as { text?: string } | null)?.text ?? ""))
-    .filter(Boolean)
-    .join("\n\n");
+    .join("");
   const toolCalls = (() => {
     type Entry = {
       name: string;
@@ -689,16 +700,20 @@ function SubagentGroup({ group }: { group: Extract<Group, { kind: "subagent" }> 
   const endData = (end?.data as { duration_ms?: number; error?: string } | undefined) ?? {};
   const duration = endData.duration_ms;
   const err = endData.error;
-  const status = !group.closed ? "running" : err ? "error" : "done";
+  const runActive = useContext(RunActiveContext);
+  const status = !group.closed ? (runActive ? "running" : "cancelled") : err ? "error" : "done";
   const statusColor =
     status === "running"
       ? "text-amber-400"
-      : status === "done"
-        ? "text-emerald-400"
-        : "text-red-400";
+      : status === "cancelled"
+        ? "text-neutral-500"
+        : status === "done"
+          ? "text-emerald-400"
+          : "text-red-400";
   return (
-    <li className="overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
+    <li data-block="subagent-group" data-subagent-label={group.label} data-subagent-agent={group.agent} data-subagent-status={status} className="overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
       <button
+        data-block-header="subagent-group"
         onClick={() => setExpanded((v) => !v)}
         className="flex w-full items-center justify-between border-b border-neutral-800 px-4 py-2 hover:bg-neutral-800/50"
       >
@@ -773,8 +788,9 @@ function AdvancedSettings({
     </label>
   );
   return (
-    <div className="overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
+    <div data-block="settings-panel" className="overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
       <button
+        data-block-header="settings-panel"
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center gap-2 px-4 py-2 hover:bg-neutral-800/50"
       >
@@ -803,9 +819,17 @@ function ReasoningPane({ text, wrapCls }: { text: string; wrapCls: string }) {
     lastTick.current = collapse.tick;
     setOpen(!collapse.allCollapsed);
   }, [collapse.tick]);
+  const preRef = useRef<HTMLPreElement | null>(null);
+  useEffect(() => {
+    const el = preRef.current;
+    if (!open || !el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distanceFromBottom < 40) el.scrollTop = el.scrollHeight;
+  }, [text, open]);
   return (
-    <div className="border-t border-neutral-800">
+    <div data-block="reasoning-pane" className="border-t border-neutral-800">
       <button
+        data-block-header="reasoning-pane"
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center gap-2 px-4 py-1.5 text-left hover:bg-neutral-800/40"
       >
@@ -815,7 +839,7 @@ function ReasoningPane({ text, wrapCls }: { text: string; wrapCls: string }) {
         </span>
       </button>
       {open && (
-        <pre className={`max-h-80 overflow-auto px-4 py-2 font-mono text-xs leading-relaxed text-neutral-400 ${wrapCls}`}>
+        <pre ref={preRef} className={`max-h-80 overflow-auto px-4 py-2 font-mono text-xs leading-relaxed text-neutral-400 ${wrapCls}`}>
           {text}
         </pre>
       )}
@@ -846,7 +870,10 @@ function ToolCallItem({
     lastTick.current = collapse.tick;
     setOpen(!collapse.allCollapsed);
   }, [collapse.tick]);
-  const running = tc.endAt === undefined;
+  const runActive = useContext(RunActiveContext);
+  const open_ = tc.endAt === undefined;
+  const running = open_ && runActive;
+  const cancelled = open_ && !runActive;
   const dur = tc.endAt !== undefined ? (tc.endAt - tc.startAt) / 1000 : undefined;
   const preview =
     tc.input === undefined
@@ -854,10 +881,18 @@ function ToolCallItem({
       : typeof tc.input === "string"
         ? tc.input
         : JSON.stringify(tc.input, null, 2);
-  const color = tc.error ? "text-red-400" : running ? "text-amber-400" : "text-emerald-400";
+  const color = tc.error
+    ? "text-red-400"
+    : running
+      ? "text-amber-400"
+      : cancelled
+        ? "text-neutral-500"
+        : "text-emerald-400";
+  const statusLabel = tc.error ? "error" : running ? "running" : cancelled ? "cancelled" : "done";
   return (
-    <li>
+    <li data-block="tool-call" data-tool-call-name={tc.name} data-tool-call-status={statusLabel}>
       <button
+        data-block-header="tool-call"
         onClick={() => setOpen((v) => !v)}
         className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 px-4 py-1.5 text-left hover:bg-neutral-800/40"
       >
@@ -870,7 +905,7 @@ function ToolCallItem({
           {tc.name}
         </span>
         <span className={`font-mono text-xs ${color}`}>
-          {tc.error ? "error" : running ? "running" : "done"}
+          {statusLabel}
         </span>
         {dur !== undefined && (
           <span className="font-mono text-xs text-neutral-500">{dur.toFixed(1)}s</span>
@@ -918,8 +953,9 @@ function FilesPanel() {
   const fmtSize = (b: number) =>
     b > 1e9 ? `${(b / 1e9).toFixed(2)} GB` : `${(b / 1e6).toFixed(1)} MB`;
   return (
-    <div className="overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
+    <div data-block="files-panel" className="overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
       <button
+        data-block-header="files-panel"
         onClick={() => setExpanded((v) => !v)}
         className="flex w-full items-center gap-2 border-b border-neutral-800 px-4 py-2 hover:bg-neutral-800/50"
       >
@@ -957,6 +993,15 @@ function FilesPanel() {
   );
 }
 
+function RunningIndicator({ running }: { running: boolean }) {
+  return (
+    <span data-block="running-indicator" data-running={running} className="flex items-center gap-2 text-xs text-neutral-400">
+      <span className={`h-2 w-2 rounded-full ${running ? "bg-amber-500 animate-pulse" : "bg-neutral-700"}`} />
+      {running ? "Running" : "Idle"}
+    </span>
+  );
+}
+
 function StatusDot({ status }: { status: string }) {
   const color =
     status === "open"
@@ -969,7 +1014,7 @@ function StatusDot({ status }: { status: string }) {
   return (
     <span className="flex items-center gap-2 text-xs text-neutral-400">
       <span className={`h-2 w-2 rounded-full ${color}`} />
-      {status === "open" ? "connected" : status}
+      {status === "open" ? "Connected" : status}
     </span>
   );
 }
