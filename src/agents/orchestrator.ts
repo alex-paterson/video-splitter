@@ -21,11 +21,11 @@ export function makeOrchestratorAgent() {
   const compilation = makeCompilationAgent();
   const segmentScout = makeSegmentScoutAgent();
   const segment = makeSegmentAgent();
-  const planAndRenderMany = makePlanAndRenderManyTool(compilation);
-  const planAndRenderSegments = makePlanAndRenderSegmentsTool(segment);
-  const transcribeMany = makeTranscribeManyTool(transcriber);
-  const topicScoutMany = makeTopicScoutManyTool(topicScout);
-  const segmentScoutMany = makeSegmentScoutManyTool(segmentScout);
+  const planAndRenderMany = makePlanAndRenderManyTool(makeCompilationAgent);
+  const planAndRenderSegments = makePlanAndRenderSegmentsTool(makeSegmentAgent);
+  const transcribeMany = makeTranscribeManyTool(makeTranscriberAgent);
+  const topicScoutMany = makeTopicScoutManyTool(makeTopicScoutAgent);
+  const segmentScoutMany = makeSegmentScoutManyTool(makeSegmentScoutAgent);
 
   return new Agent({
     id: "orchestrator",

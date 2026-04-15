@@ -54,7 +54,7 @@ async function pool<T, R>(
  * Wraps a TopicScout agent as a fan-out tool that scouts N topics across
  * several transcripts concurrently.
  */
-export function makeTopicScoutManyTool(topicScoutAgent: Agent) {
+export function makeTopicScoutManyTool(makeAgent: () => Agent) {
   return tool({
     name: "agents_topic_scout_many",
     description:
@@ -80,7 +80,7 @@ export function makeTopicScoutManyTool(topicScoutAgent: Agent) {
       const maxHint = maxSeconds !== undefined ? ` maxSeconds=${maxSeconds}` : "";
       const runs = await pool(transcripts, cap, (t, i) =>
         invokeSubagent(
-          topicScoutAgent,
+          makeAgent(),
           `topic_scout[${i + 1}/${transcripts.length}] ${t}`,
           `Scout ${countPerTranscript} topic(s) from this transcript: ${t}${maxHint}`
         )
@@ -105,7 +105,7 @@ export function makeTopicScoutManyTool(topicScoutAgent: Agent) {
 /**
  * Wraps a SegmentScout agent as a fan-out tool across several transcripts.
  */
-export function makeSegmentScoutManyTool(segmentScoutAgent: Agent) {
+export function makeSegmentScoutManyTool(makeAgent: () => Agent) {
   return tool({
     name: "agents_segment_scout_many",
     description:
@@ -131,7 +131,7 @@ export function makeSegmentScoutManyTool(segmentScoutAgent: Agent) {
       const maxHint = maxSeconds !== undefined ? ` maxSeconds=${maxSeconds}` : "";
       const runs = await pool(transcripts, cap, (t, i) =>
         invokeSubagent(
-          segmentScoutAgent,
+          makeAgent(),
           `segment_scout[${i + 1}/${transcripts.length}] ${t}`,
           `Scout ${countPerTranscript} segment(s) from this transcript: ${t}${maxHint}`
         )
@@ -157,7 +157,7 @@ export function makeSegmentScoutManyTool(segmentScoutAgent: Agent) {
  * Wraps a Transcriber agent as a fan-out tool that transcribes several source
  * videos concurrently. Caps concurrency to avoid flooding the Whisper API.
  */
-export function makeTranscribeManyTool(transcriberAgent: Agent) {
+export function makeTranscribeManyTool(makeAgent: () => Agent) {
   return tool({
     name: "agents_transcribe_many",
     description:
@@ -182,7 +182,7 @@ export function makeTranscribeManyTool(transcriberAgent: Agent) {
       const cap = Math.max(1, Math.min(concurrency ?? 4, 8));
       const runs = await pool(sources, cap, (src, i) =>
         invokeSubagent(
-          transcriberAgent,
+          makeAgent(),
           `transcribe[${i + 1}/${sources.length}] ${src}`,
           `Transcribe this source video: ${src}`
         )
@@ -209,7 +209,7 @@ export function makeTranscribeManyTool(transcriberAgent: Agent) {
  * MP4 path per input topic, in input order. Discarded plans surface as
  * "DISCARDED: <reason>" lines.
  */
-export function makePlanAndRenderManyTool(compilationAgent: Agent) {
+export function makePlanAndRenderManyTool(makeAgent: () => Agent) {
   return tool({
     name: "agents_plan_and_render_many",
     description:
@@ -274,7 +274,7 @@ export function makePlanAndRenderManyTool(compilationAgent: Agent) {
         : "";
       const runs = await pool(topics, 4, (topicPath, i) =>
         invokeSubagent(
-          compilationAgent,
+          makeAgent(),
           `compilation[${i + 1}/${topics.length}] ${topicPath}`,
           `Produce the final MP4 for this topic: ${topicPath}${silenceHint}${maxHint}${bleepHint}${bannerHint}`
         )
@@ -300,7 +300,7 @@ export function makePlanAndRenderManyTool(compilationAgent: Agent) {
  * Wraps a SegmentPlanner agent as a fan-out tool that renders multiple
  * .segment.json files concurrently via Promise.allSettled.
  */
-export function makePlanAndRenderSegmentsTool(segmentAgent: Agent) {
+export function makePlanAndRenderSegmentsTool(makeAgent: () => Agent) {
   return tool({
     name: "agents_plan_and_render_segments",
     description:
@@ -346,7 +346,7 @@ export function makePlanAndRenderSegmentsTool(segmentAgent: Agent) {
         : "";
       const runs = await pool(segments, 4, (segmentPath, i) =>
         invokeSubagent(
-          segmentAgent,
+          makeAgent(),
           `segment[${i + 1}/${segments.length}] ${segmentPath}`,
           `Produce the final MP4 for this segment: ${segmentPath}${silenceHint}${maxHint}${bleepHint}${bannerHint}`
         )
