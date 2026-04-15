@@ -237,10 +237,6 @@ export function App() {
             <main data-section="main" className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
               <aside data-section="sidebar" className="flex flex-col gap-6 lg:sticky lg:top-16 lg:self-start">
               <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-3">
-                <div data-block="status-bar" className="mb-3 flex items-center justify-end gap-4">
-                  <RunningIndicator running={!!activeRunId} />
-                  <StatusDot status={status} />
-                </div>
                 <textarea
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
@@ -261,9 +257,10 @@ export function App() {
                   className="w-full resize-y rounded-md bg-neutral-950 px-3 py-2 font-mono text-sm text-neutral-100 outline-none ring-1 ring-neutral-800 focus:ring-emerald-600"
                 />
                 <div className="mt-2 flex items-center justify-between">
-                  <span className="font-mono text-xs text-neutral-500">
-                    {lastRunId ? `last run_id: ${lastRunId}` : "⌘/Ctrl+Enter to run"}
-                  </span>
+                  <div data-block="status-bar" className="flex items-center gap-4">
+                    <RunningIndicator running={!!activeRunId} />
+                    <StatusDot status={status} />
+                  </div>
                   <div className="flex items-center gap-2">
                     {activeRunId ? (
                       <button
@@ -914,11 +911,13 @@ function ToolCallItem({
   const collapse = useContext(CollapseContext);
   const defaultCollapsed = useContext(DefaultCollapsedContext);
   const [open, setOpen] = useState(!defaultCollapsed);
+  const [inputOpen, setInputOpen] = useState(false);
   const lastTick = useRef(collapse.tick);
   useEffect(() => {
     if (lastTick.current === collapse.tick) return;
     lastTick.current = collapse.tick;
     setOpen(!collapse.allCollapsed);
+    setInputOpen(false);
   }, [collapse.tick]);
   const runActive = useContext(RunActiveContext);
   const open_ = tc.endAt === undefined;
@@ -965,9 +964,22 @@ function ToolCallItem({
         )}
       </button>
       {open && preview && (
-        <pre className="whitespace-pre-wrap break-all px-4 pb-2 font-mono text-xs text-neutral-500">
-          {preview}
-        </pre>
+        <div data-block="tool-call-input" className="pl-6">
+          <button
+            onClick={(e) => { e.stopPropagation(); setInputOpen((v) => !v); }}
+            className="flex w-full items-center gap-2 px-4 py-1 text-left hover:bg-neutral-800/40"
+          >
+            <span className="font-mono text-xs text-neutral-500">{inputOpen ? "▾" : "▸"}</span>
+            <span className="rounded bg-neutral-800 px-2 py-0.5 font-mono text-xs text-neutral-400">
+              Input
+            </span>
+          </button>
+          {inputOpen && (
+            <pre className="whitespace-pre-wrap break-all px-4 pb-2 font-mono text-xs text-neutral-500">
+              {preview}
+            </pre>
+          )}
+        </div>
       )}
       {open && tc.cliLines.length > 0 && (
         <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words border-t border-neutral-800/50 px-4 py-2 font-mono text-xs leading-relaxed text-neutral-300">
