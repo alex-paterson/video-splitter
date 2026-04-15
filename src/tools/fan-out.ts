@@ -4,14 +4,18 @@ import { bus } from "../lib/event-bus.js";
 import { isCancelled } from "./cli-tool.js";
 import { runCtx } from "../lib/run-context.js";
 
+type ToolCtx = { agent?: { cancelSignal?: AbortSignal } };
+const getCancelSignal = (ctx?: ToolCtx): AbortSignal | undefined => ctx?.agent?.cancelSignal;
+
 export async function streamAgentWithReasoning(
   agent: Agent,
   label: string,
   agentId: string,
-  prompt: string
+  prompt: string,
+  cancelSignal?: AbortSignal,
 ): Promise<unknown> {
   return runCtx.run({ agentId, label }, async () => {
-  const gen = agent.stream(prompt);
+  const gen = agent.stream(prompt, cancelSignal ? { cancelSignal } : undefined);
   let result: unknown;
 
   // Coalesce textDelta fragments so we don't fire an SSE event per token.
@@ -109,13 +113,14 @@ export async function streamAgentWithReasoning(
   });
 }
 
-async function invokeSubagent(agent: Agent, label: string, prompt: string): Promise<unknown> {
+async function invokeSubagent(agent: Agent, label: string, prompt: string, cancelSignal?: AbortSignal): Promise<unknown> {
   if (isCancelled(bus.getCurrentRunId())) throw new Error("RUN_CANCELLED");
+  if (cancelSignal?.aborted) throw new Error("RUN_CANCELLED");
   const agentId = (agent as unknown as { id?: string }).id ?? "agent";
   const startedAt = Date.now();
   bus.publish({ type: "subagent_start", agent: agentId, label });
   try {
-    const result = await streamAgentWithReasoning(agent, label, agentId, prompt);
+    const result = await streamAgentWithReasoning(agent, label, agentId, prompt, cancelSignal);
     bus.publish({ type: "subagent_end", agent: agentId, label, duration_ms: Date.now() - startedAt });
     return result;
   } catch (e) {
@@ -181,14 +186,16 @@ export function makeTopicScoutManyTool(makeAgent: () => Agent) {
       countPerTranscript: number;
       maxSeconds?: number;
       concurrency?: number;
-    }) => {
+    }, ctx?: ToolCtx) => {
+      const sig = getCancelSignal(ctx);
       const cap = Math.max(1, Math.min(concurrency ?? 4, 8));
       const maxHint = maxSeconds !== undefined ? ` maxSeconds=${maxSeconds}` : "";
       const runs = await pool(transcripts, cap, (t, i) =>
         invokeSubagent(
           makeAgent(),
           `topic_scout[${i + 1}/${transcripts.length}] ${t}`,
-          `Scout ${countPerTranscript} topic(s) from this transcript: ${t}${maxHint}`
+          `Scout ${countPerTranscript} topic(s) from this transcript: ${t}${maxHint}`,
+          sig,
         )
       );
       return runs
@@ -232,14 +239,16 @@ export function makeSegmentScoutManyTool(makeAgent: () => Agent) {
       countPerTranscript: number;
       maxSeconds?: number;
       concurrency?: number;
-    }) => {
+    }, ctx?: ToolCtx) => {
+      const sig = getCancelSignal(ctx);
       const cap = Math.max(1, Math.min(concurrency ?? 4, 8));
       const maxHint = maxSeconds !== undefined ? ` maxSeconds=${maxSeconds}` : "";
       const runs = await pool(transcripts, cap, (t, i) =>
         invokeSubagent(
           makeAgent(),
           `segment_scout[${i + 1}/${transcripts.length}] ${t}`,
-          `Scout ${countPerTranscript} segment(s) from this transcript: ${t}${maxHint}`
+          `Scout ${countPerTranscript} segment(s) from this transcript: ${t}${maxHint}`,
+          sig,
         )
       );
       return runs
@@ -284,13 +293,15 @@ export function makeTranscribeManyTool(makeAgent: () => Agent) {
     }: {
       sources: string[];
       concurrency?: number;
-    }) => {
+    }, ctx?: ToolCtx) => {
+      const sig = getCancelSignal(ctx);
       const cap = Math.max(1, Math.min(concurrency ?? 4, 8));
       const runs = await pool(sources, cap, (src, i) =>
         invokeSubagent(
           makeAgent(),
           `transcribe[${i + 1}/${sources.length}] ${src}`,
-          `Transcribe this source video: ${src}`
+          `Transcribe this source video: ${src}`,
+          sig,
         )
       );
       return runs
@@ -364,7 +375,8 @@ export function makePlanAndRenderManyTool(makeAgent: () => Agent) {
       bleep?: boolean;
       bleepWords?: string;
       banner?: boolean;
-    }) => {
+    }, ctx?: ToolCtx) => {
+      const sig = getCancelSignal(ctx);
       const silenceHint = keepSilence
         ? "\nThe top-level user explicitly asked to KEEP silence — skip the video_remove_silence step and return the raw compilation_render output path."
         : "";
@@ -382,7 +394,8 @@ export function makePlanAndRenderManyTool(makeAgent: () => Agent) {
         invokeSubagent(
           makeAgent(),
           `compilation[${i + 1}/${topics.length}] ${topicPath}`,
-          `Produce the final MP4 for this topic: ${topicPath}${silenceHint}${maxHint}${bleepHint}${bannerHint}`
+          `Produce the final MP4 for this topic: ${topicPath}${silenceHint}${maxHint}${bleepHint}${bannerHint}`,
+          sig,
         )
       );
       const lines: string[] = [];
@@ -436,7 +449,8 @@ export function makePlanAndRenderSegmentsTool(makeAgent: () => Agent) {
       bleep?: boolean;
       bleepWords?: string;
       banner?: boolean;
-    }) => {
+    }, ctx?: ToolCtx) => {
+      const sig = getCancelSignal(ctx);
       const silenceHint = keepSilence
         ? "\nThe top-level user explicitly asked to KEEP silence — skip video_remove_silence and return the raw segment_render output path."
         : "";
@@ -454,7 +468,8 @@ export function makePlanAndRenderSegmentsTool(makeAgent: () => Agent) {
         invokeSubagent(
           makeAgent(),
           `segment[${i + 1}/${segments.length}] ${segmentPath}`,
-          `Produce the final MP4 for this segment: ${segmentPath}${silenceHint}${maxHint}${bleepHint}${bannerHint}`
+          `Produce the final MP4 for this segment: ${segmentPath}${silenceHint}${maxHint}${bleepHint}${bannerHint}`,
+          sig,
         )
       );
       const lines: string[] = [];

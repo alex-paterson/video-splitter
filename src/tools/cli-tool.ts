@@ -151,7 +151,9 @@ export function cliTool<S extends ZodRawShape>(spec: CliSpec<S>) {
       try {
         return await runCli(spec.script, argv);
       } catch (e: unknown) {
-        return `ERROR: ${e instanceof Error ? e.message : String(e)}`;
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("RUN_CANCELLED")) throw e;
+        return `ERROR: ${msg}`;
       }
     },
   });

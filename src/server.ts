@@ -17,7 +17,7 @@ import { bus, BusEvent } from "./lib/event-bus.js";
 import { killRun, clearCancelled, isCancelled } from "./tools/cli-tool.js";
 import { appendMemoryEntry } from "./tools/memory.js";
 
-const runCancelRejects = new Map<string, (err: Error) => void>();
+const runAbortControllers = new Map<string, AbortController>();
 
 const OUT_DIR = path.resolve(new URL("../out", import.meta.url).pathname);
 fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -138,16 +138,18 @@ const server = http.createServer(async (req, res) => {
         bus.setCurrentRunId(run_id);
         clearCancelled(run_id);
         bus.publish({ type: "agent_start", run_id, prompt: body.prompt });
-        const cancelPromise = new Promise<never>((_, reject) => {
-          runCancelRejects.set(run_id, reject);
-        });
+        const ac = new AbortController();
+        runAbortControllers.set(run_id, ac);
         const orchStartedAt = Date.now();
         bus.publish({ type: "subagent_start", run_id, agent: "orchestrator", label: "orchestrator" });
         try {
-          const result = await Promise.race([
-            streamAgentWithReasoning(orchestrator, "orchestrator", "orchestrator", body.prompt!),
-            cancelPromise,
-          ]);
+          const result = await streamAgentWithReasoning(
+            orchestrator,
+            "orchestrator",
+            "orchestrator",
+            body.prompt!,
+            ac.signal,
+          );
           bus.publish({
             type: "subagent_end",
             run_id,
@@ -185,7 +187,7 @@ const server = http.createServer(async (req, res) => {
             bus.publish({ type: "agent_end", run_id, error: true });
           }
         } finally {
-          runCancelRejects.delete(run_id);
+          runAbortControllers.delete(run_id);
           if (bus.getCurrentRunId() === run_id) bus.setCurrentRunId(undefined);
         }
       })();
@@ -284,10 +286,10 @@ const server = http.createServer(async (req, res) => {
       }
       const killed = killRun(runId);
       bus.publish({ type: "error", run_id: runId, message: `Run cancelled by user (killed ${killed} subprocess(es))` });
-      const rej = runCancelRejects.get(runId);
-      if (rej) {
-        rej(new Error("RUN_CANCELLED"));
-        runCancelRejects.delete(runId);
+      const ac = runAbortControllers.get(runId);
+      if (ac) {
+        ac.abort(new Error("RUN_CANCELLED"));
+        runAbortControllers.delete(runId);
       }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true, run_id: runId, killed }));
