@@ -1,9 +1,9 @@
 import { Agent } from "@strands-agents/sdk";
 import { buildModel, HARD_RULES } from "./shared.js";
-import { makeTopicScoutAgent } from "./topic-scout.js";
-import { makeCompilationAgent } from "./compilation.js";
-import { makeSegmentScoutAgent } from "./segment-scout.js";
-import { makeSegmentAgent } from "./segment.js";
+import { makeTopicScoutAgent } from "./agent-topic-scout.js";
+import { makeCompilationCreatorAgent } from "./agent-compilation-creator.js";
+import { makeSegmentScoutAgent } from "./agent-segment-scout.js";
+import { makeSegmentCreatorAgent } from "./agent-segment-creator.js";
 import {
   makePlanAndRenderManyTool,
   makePlanAndRenderSegmentsTool,
@@ -23,9 +23,9 @@ export function makeOrchestratorAgent() {
     makeAgent: makeTopicScoutAgent,
   });
   const compilation = makeSubagentTool({
-    name: "agent_compilation_planner",
+    name: "agent_compilation_creator",
     description: "Plan, render, and silence-strip ONE compilation from a .topic.json, or refine an existing .compilation.json. Input: natural-language prompt. Returns the final MP4 path.",
-    makeAgent: makeCompilationAgent,
+    makeAgent: makeCompilationCreatorAgent,
   });
   const segmentScout = makeSubagentTool({
     name: "agent_segment_scout",
@@ -33,12 +33,12 @@ export function makeOrchestratorAgent() {
     makeAgent: makeSegmentScoutAgent,
   });
   const segment = makeSubagentTool({
-    name: "agent_segment_planner",
+    name: "agent_segment_creator",
     description: "Render and silence-strip ONE segment from a .segment.json. Input: natural-language prompt. Returns the final MP4 path.",
-    makeAgent: makeSegmentAgent,
+    makeAgent: makeSegmentCreatorAgent,
   });
-  const planAndRenderMany = makePlanAndRenderManyTool(makeCompilationAgent);
-  const planAndRenderSegments = makePlanAndRenderSegmentsTool(makeSegmentAgent);
+  const planAndRenderMany = makePlanAndRenderManyTool(makeCompilationCreatorAgent);
+  const planAndRenderSegments = makePlanAndRenderSegmentsTool(makeSegmentCreatorAgent);
   const transcribeMany = makeTranscribeManyTool();
   const topicScoutMany = makeTopicScoutManyTool(makeTopicScoutAgent);
   const segmentScoutMany = makeSegmentScoutManyTool(makeSegmentScoutAgent);
@@ -88,7 +88,7 @@ Step 0 — Classify the request:
      - Else call memory_read and find the most recently recorded .compilation[.N].json path.
      - Else list_dir /home/alex/OBS (or the dir the user hints at) and pick the newest *.compilation*.json. If several candidates tie and the user's wording doesn't disambiguate, pick the most recently modified.
      - If none found, answer "ERROR: no prior .compilation.json found — can't refine." and stop.
-  2. Invoke the CompilationPlanner (Compilation tool) ONCE with a prompt like:
+  2. Invoke the CompilationCreator (agent_compilation_creator) ONCE with a prompt like:
        "Refine-existing mode. Compilation JSON: <path>. User instruction: <verbatim user text>. Render, silence-strip, return the new MP4 path."
      Pass maxSeconds only if the user explicitly specified one.
   3. In the final answer, list the new MP4 path and the new .compilation[.N].json path. Record both in memory_append.
@@ -117,7 +117,7 @@ NEVER ask the user questions — the runtime is non-interactive. If something is
 State the defaults you picked in the FINAL answer under an "Assumed defaults:" line — do not ask.
 
 Step 2 — Drive the pipeline:
-0. STAGE every source video into out/ FIRST — this step is MANDATORY for every production run (any run that will transcribe, scout, or render). Call stage_sources(sources=[...all resolved source paths...]) EXACTLY ONCE with the full list, even if there is only one source. Use the returned out/*.mkv paths everywhere downstream (transcribe, scout, render). Never pass a non-out/ path to Transcriber or any fan-out tool. If stage_sources is skipped, artifacts will land in the wrong directory and the run is broken — so do not skip.
+0. STAGE every source video into tmp/ FIRST — this step is MANDATORY for every production run (any run that will transcribe, scout, or render). Call stage_sources(sources=[...all resolved source paths...]) EXACTLY ONCE with the full list, even if there is only one source. Use the returned tmp/*.mkv paths everywhere downstream (transcribe, scout, render). Never pass a non-tmp/ path to transcribe_source / transcribe_many or any fan-out tool. tmp/ is the scratch workspace — transcripts, audio, topic/compilation/segment JSONs, and intermediate renders all live there. out/ is reserved for the FINAL publishable videos. Publishing is explicit: after all editing is done (render, silence-strip, optional bleep, optional refinement), the subagent must call video_publish on the final MP4 — that is the ONLY thing that writes to out/. No other tool does. If stage_sources is skipped, artifacts will land in the wrong directory and the run is broken — so do not skip.
 1. Transcribe source(s):
      - With exactly ONE source video, call transcribe_source(source=<out/*.mkv>).
      - With 2 OR MORE source videos, you MUST call transcribe_many(sources=[...all paths...]) ONCE with the full list. DO NOT loop and call transcribe_source sequentially — that is strictly slower and wastes time.

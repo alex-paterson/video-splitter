@@ -1,7 +1,11 @@
 import { OpenAIModel } from "@strands-agents/sdk/models/openai";
 
 export function buildModel() {
-  return new OpenAIModel({ api: "chat" });
+  return new OpenAIModel({
+    // Not supported for chat
+    // params: { reasoning_effort: "medium" }, // "minimal" | "low" |  "medium" | "high"
+    api: "chat"
+  });
 }
 
 export const HARD_RULES = `

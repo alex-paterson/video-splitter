@@ -60,12 +60,12 @@ export const listDir = tool({
 export const stageSources = tool({
   name: "stage_sources",
   description:
-    "Copy one OR MORE source videos into out/ if they aren't already there. Accepts an array of absolute paths; returns a newline-separated list of the corresponding out/ paths. Call this ONCE at the start of every run, even for a single source, so all downstream artifacts (.transcript.json, .topic.json, .compilation.json, rendered MP4s) land in out/.",
+    "Copy one OR MORE source videos into tmp/ (the run workspace) if they aren't already there. Accepts an array of absolute paths; returns a newline-separated list of the corresponding tmp/ paths. Call this ONCE at the start of every run, even for a single source, so all downstream artifacts (.transcript.json, .topic.json, .compilation.json, rendered MP4s) land in tmp/. out/ is reserved for the final publishable video(s).",
   inputSchema: z.object({
     sources: z.array(z.string()).min(1).describe("Absolute paths to source video files"),
   }),
   callback: ({ sources }: { sources: string[] }) => {
-    const outDir = path.join(PROJECT_ROOT, "out");
+    const outDir = path.join(PROJECT_ROOT, "tmp");
     fs.mkdirSync(outDir, { recursive: true });
     const results: string[] = [];
     for (const src of sources) {
@@ -87,14 +87,14 @@ export const stageSources = tool({
 export const stageSource = tool({
   name: "stage_source",
   description:
-    "Copy a source video into out/ if it isn't already there. Returns the absolute path inside out/. Call this for EVERY source video before transcribing/rendering — all downstream artifacts (.transcript.json, .topic.json, .compilation.json, rendered MP4s) will then land in out/ alongside it.",
+    "Copy a source video into tmp/ (the run workspace) if it isn't already there. Returns the absolute path inside tmp/. Call this for EVERY source video before transcribing/rendering — all downstream artifacts (.transcript.json, .topic.json, .compilation.json, rendered MP4s) will then land in tmp/ alongside it. out/ is reserved for final publishable videos.",
   inputSchema: z.object({
     path: z.string().describe("Absolute path to the source video file"),
   }),
   callback: ({ path: p }: { path: string }) => {
     const abs = path.isAbsolute(p) ? p : path.join(PROJECT_ROOT, p);
     if (!fs.existsSync(abs)) return `ERROR: not found: ${abs}`;
-    const outDir = path.join(PROJECT_ROOT, "out");
+    const outDir = path.join(PROJECT_ROOT, "tmp");
     fs.mkdirSync(outDir, { recursive: true });
     const base = path.basename(abs);
     const dest = path.join(outDir, base);

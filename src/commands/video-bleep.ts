@@ -5,8 +5,8 @@
  * timestamps are native to the output), picks target words (either an
  * explicit --words list or --auto via Claude), and mutes/beeps them.
  *
- * Produces <base>.bleeped.mp4 and publishes it to <repo>/out/, removing the
- * pre-bleep predecessor from the publish dir.
+ * Produces <base>.bleeped.mp4 next to the input. Publishing to out/ is a
+ * separate explicit step (video-publish).
  *
  * Usage: tsx src/commands/video-bleep.ts [options] <input-mp4>
  */
@@ -266,23 +266,6 @@ async function main() {
 
   const outSize = (fs.statSync(outputPath).size / 1e6).toFixed(1);
   process.stderr.write(`Done: ${outputPath}  (${outSize} MB)\n`);
-
-  // Publish bleeped result to <repo>/out/, replacing the unbleeped predecessor
-  try {
-    const repoRoot = path.resolve(new URL("../..", import.meta.url).pathname);
-    const publishDir = path.join(repoRoot, "out");
-    fs.mkdirSync(publishDir, { recursive: true });
-    const priorDest = path.join(publishDir, path.basename(inputPath));
-    if (fs.existsSync(priorDest)) {
-      fs.unlinkSync(priorDest);
-      process.stderr.write(`Unpublished (pre-bleep): ${priorDest}\n`);
-    }
-    const dest = path.join(publishDir, path.basename(outputPath));
-    fs.copyFileSync(outputPath, dest);
-    process.stderr.write(`Published: ${dest}\n`);
-  } catch (e) {
-    process.stderr.write(`Publish skipped: ${e instanceof Error ? e.message : String(e)}\n`);
-  }
 
   try { fs.unlinkSync(audioPath); } catch {}
 }

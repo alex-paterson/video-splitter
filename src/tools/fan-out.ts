@@ -353,7 +353,7 @@ export function makeTranscribeManyTool() {
 }
 
 /**
- * Wraps a CompilationPlanner agent as a fan-out tool that plans+renders
+ * Wraps a CompilationCreator agent as a fan-out tool that plans+renders
  * multiple .topic.json files concurrently via Promise.allSettled. Returns one
  * MP4 path per input topic, in input order. Discarded plans surface as
  * "DISCARDED: <reason>" lines.
@@ -362,7 +362,7 @@ export function makePlanAndRenderManyTool(makeAgent: () => Agent) {
   return tool({
     name: "agents_plan_and_render_many",
     description:
-      "Run the CompilationPlanner concurrently across several .topic.json files. Given a list of topic paths, returns one final MP4 path (or DISCARDED line) per topic, in the same order. Use this instead of invoking compilation_planner sequentially when you have multiple topics to produce.",
+      "Run the CompilationCreator concurrently across several .topic.json files. Given a list of topic paths, returns one final MP4 path (or DISCARDED line) per topic, in the same order. Use this instead of invoking agent_compilation_creator sequentially when you have multiple topics to produce.",
     inputSchema: z.object({
       topics: z
         .array(z.string())
@@ -417,7 +417,7 @@ export function makePlanAndRenderManyTool(makeAgent: () => Agent) {
           ? `\nMAX SECONDS: ${maxSeconds}. Pass maxSeconds=${maxSeconds} to topic_to_compilation; if the plan is OVER_MAX, iterate with compilation_refine (up to 4×) until DURATION <= MAX. Render the latest version.`
           : "";
       const bleepHint = bleep || bleepWords
-        ? `\nBLEEP: as the FINAL step, call video_bleep on the silence-stripped MP4.${bleepWords ? ` Pass words="${bleepWords}".` : " Pass auto=true."} Return the resulting .bleeped.mp4 path.`
+        ? `\nBLEEP: after silence-strip and before video_publish, call video_bleep on the silence-stripped MP4.${bleepWords ? ` Pass words="${bleepWords}".` : " Pass auto=true."} Then call video_publish on it.`
         : "";
       const bannerHint = banner
         ? "\nBANNER: REQUIRED. Run topic_to_banner and pass banner=<png> to compilation_render. Verify the render's stderr shows 'Banner: <path>' (not '(none)')."
@@ -448,14 +448,14 @@ export function makePlanAndRenderManyTool(makeAgent: () => Agent) {
 }
 
 /**
- * Wraps a SegmentPlanner agent as a fan-out tool that renders multiple
+ * Wraps a SegmentCreator agent as a fan-out tool that renders multiple
  * .segment.json files concurrently via Promise.allSettled.
  */
 export function makePlanAndRenderSegmentsTool(makeAgent: () => Agent) {
   return tool({
     name: "agents_plan_and_render_segments",
     description:
-      "Run the SegmentPlanner concurrently across several .segment.json files. Given a list of segment paths, returns one final MP4 path (or DISCARDED line) per segment, in the same order.",
+      "Run the SegmentCreator concurrently across several .segment.json files. Given a list of segment paths, returns one final MP4 path (or DISCARDED line) per segment, in the same order.",
     inputSchema: z.object({
       segments: z
         .array(z.string())
@@ -491,7 +491,7 @@ export function makePlanAndRenderSegmentsTool(makeAgent: () => Agent) {
           ? `\nHARD CEILING: ${maxSeconds} seconds. If the segment file indicates it's over (or a DISCARDED line is surfaced), your final answer is exactly the DISCARDED line.`
           : "";
       const bleepHint = bleep || bleepWords
-        ? `\nBLEEP: as the FINAL step, call video_bleep on the silence-stripped MP4.${bleepWords ? ` Pass words="${bleepWords}".` : " Pass auto=true."} Return the resulting .bleeped.mp4 path.`
+        ? `\nBLEEP: after silence-strip and before video_publish, call video_bleep on the silence-stripped MP4.${bleepWords ? ` Pass words="${bleepWords}".` : " Pass auto=true."} Then call video_publish on it.`
         : "";
       const bannerHint = banner
         ? "\nBANNER: REQUIRED. Run topic_to_banner and pass banner=<png> to segment_render. Verify the render's stderr shows 'Banner: <path>' (not '(none)')."

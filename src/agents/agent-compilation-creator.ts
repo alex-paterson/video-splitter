@@ -6,15 +6,16 @@ import {
   compilationRender,
   videoRemoveSilence,
   videoBleep,
+  videoPublish,
   topicToBanner,
 } from "../tools/commands.js";
 import { readFile } from "../tools/fs-tools.js";
 import { compilationEstimateDuration } from "../tools/estimate.js";
 
-export function makeCompilationAgent() {
+export function makeCompilationCreatorAgent() {
   return new Agent({
-    id: "agent_compilation_planner",
-    name: "agent_compilation_planner",
+    id: "agent_compilation_creator",
+    name: "agent_compilation_creator",
     description:
       "Given one .topic.json, builds the .compilation.json plan, reviews it, renders it, and strips silence from the final MP4. Returns the final silence-stripped MP4 path. Honors max-seconds (discard-and-regenerate) and optional bleep/censor.",
     model: buildModel(),
@@ -24,6 +25,7 @@ export function makeCompilationAgent() {
       compilationRender,
       videoRemoveSilence,
       videoBleep,
+      videoPublish,
       topicToBanner,
       compilationEstimateDuration,
       readFile,
@@ -31,7 +33,7 @@ export function makeCompilationAgent() {
     systemPrompt: `
 ${HARD_RULES}
 
-You are the CompilationPlanner. You take ONE .topic.json and produce ONE polished short-video MP4, OR you take an existing .compilation[.N].json plus a modification instruction and produce a revised MP4.
+You are the CompilationCreator. You take ONE .topic.json and produce ONE polished short-video MP4, OR you take an existing .compilation[.N].json plus a modification instruction and produce a revised MP4.
 
 REFINE-EXISTING MODE:
 If the invocation gives you an existing .compilation[.N].json path and a user instruction (e.g. "remove the part where X happens", "drop the clip about Y", "shorter overall"), SKIP steps 1-3 below. Instead:
@@ -56,7 +58,7 @@ FRESH-TOPIC MODE (default):
 5. Call compilation_render on the final .compilation[.N].json. Default args: aspect="landscape", resolution="1280x720", preset="fast", hwAccel="nvenc" (fall back to vaapi if nvenc errors). Pass banner=<png> only if step 4 generated one.
 6. By default, immediately call video_remove_silence on that rendered MP4 with reencode=true to strip empty audio. The default output path will be <base>.compilation.cut.mp4. Skip this step ONLY if the top-level user prompt explicitly says to keep silence.
 7. If the invocation says to bleep/censor/profanity (or provides an explicit words list), as the FINAL step call video_bleep on the silence-stripped MP4. Pass auto=true unless words were given; if words were given, pass them as the "words" argument. video_bleep re-transcribes the cut itself with word-level timestamps, so bleep timing is accurate to the final output. Return the resulting .bleeped.mp4 path.
-8. Return ONLY the final MP4 path (bleeped if applicable, else silence-stripped, else raw compilation) as your final answer.
+8. As the VERY LAST step, call video_publish(input=<final-tmp-mp4>) to copy the final MP4 into out/. That is the ONLY thing that writes to out/ — none of the earlier steps do. Return the path returned by video_publish as your final answer.
 `.trim(),
   });
 }

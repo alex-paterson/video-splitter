@@ -260,6 +260,18 @@ export const videoBleep = cliTool({
   }),
 });
 
+export const videoPublish = cliTool({
+  name: "video_publish",
+  description:
+    "Publish the FINAL MP4 to out/. Call this exactly once at the very end of a production run, after all silence-stripping / bleeping / refinement is complete. Input path is typically in tmp/. Optionally pass replace=<path> to remove a previously-published file with a different basename.",
+  script: "src/commands/video-publish.ts",
+  positional: ["input"],
+  input: z.object({
+    input: z.string().describe("Path to the final MP4 (usually in tmp/)"),
+    replace: z.string().optional().describe("Prior published filename to remove before copying"),
+  }),
+});
+
 export const videoRemoveSilence = cliTool({
   name: "video_remove_silence",
   description:

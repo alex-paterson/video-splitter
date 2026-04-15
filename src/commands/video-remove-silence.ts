@@ -188,21 +188,6 @@ async function main() {
     `Done. Output: ${outputPath}  (${outSize} MB, ${totalKept.toFixed(1)}s)\n`
   );
 
-  // Auto-publish: if the well-known target dir exists, mirror the final cut.mp4 there.
-  // Publish final cut to <repo>/out/ for the frontend's downloads list.
-  try {
-    const repoRoot = path.resolve(
-      new URL("../..", import.meta.url).pathname
-    );
-    const publishDir = path.join(repoRoot, "out");
-    fs.mkdirSync(publishDir, { recursive: true });
-    const dest = path.join(publishDir, path.basename(outputPath));
-    fs.copyFileSync(outputPath, dest);
-    process.stderr.write(`Published: ${dest}\n`);
-  } catch (e) {
-    process.stderr.write(`Publish skipped: ${e instanceof Error ? e.message : String(e)}\n`);
-  }
-
   // Debug dump: detected silence + kept intervals
   const silencePath = deriveOutputPath(inputPath, ".silence", ".json");
   fs.writeFileSync(
