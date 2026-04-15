@@ -1095,7 +1095,7 @@ function FilesPanel() {
             files.map((f) => (
               <div key={f.name} className="flex flex-wrap items-center gap-3 px-4 py-2 text-sm">
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-mono text-xs text-neutral-200">{f.name}</div>
+                  <div className="break-all font-mono text-xs text-neutral-200">{f.name}</div>
                   <div className="font-mono text-[10px] text-neutral-500">
                     {new Date(f.created_ms).toLocaleString()} · {fmtSize(f.size)}
                   </div>

@@ -1,6 +1,5 @@
 import { Agent } from "@strands-agents/sdk";
 import { buildModel, HARD_RULES } from "./shared.js";
-import { makeTranscriberAgent } from "./transcriber.js";
 import { makeTopicScoutAgent } from "./topic-scout.js";
 import { makeCompilationAgent } from "./compilation.js";
 import { makeSegmentScoutAgent } from "./segment-scout.js";
@@ -14,14 +13,10 @@ import {
   makeSubagentTool,
 } from "../tools/fan-out.js";
 import { readFile, listDir, projectOverview, stageSource, stageSources } from "../tools/fs-tools.js";
+import { transcribeSource } from "../tools/commands.js";
 import { memoryRead, memoryAppend } from "../tools/memory.js";
 
 export function makeOrchestratorAgent() {
-  const transcriber = makeSubagentTool({
-    name: "agent_transcriber",
-    description: "Transcribe ONE source video (original MKV). Input: a natural-language prompt naming the source path. Returns the .transcript.json path.",
-    makeAgent: makeTranscriberAgent,
-  });
   const topicScout = makeSubagentTool({
     name: "agent_topic_scout",
     description: "Scout N topics from ONE .transcript.json. Input: natural-language prompt with transcript path, count, and optional maxSeconds. Returns one .topic.json path per topic.",
@@ -44,7 +39,7 @@ export function makeOrchestratorAgent() {
   });
   const planAndRenderMany = makePlanAndRenderManyTool(makeCompilationAgent);
   const planAndRenderSegments = makePlanAndRenderSegmentsTool(makeSegmentAgent);
-  const transcribeMany = makeTranscribeManyTool(makeTranscriberAgent);
+  const transcribeMany = makeTranscribeManyTool();
   const topicScoutMany = makeTopicScoutManyTool(makeTopicScoutAgent);
   const segmentScoutMany = makeSegmentScoutManyTool(makeSegmentScoutAgent);
 
@@ -54,7 +49,7 @@ export function makeOrchestratorAgent() {
     description: "Top-level agent that turns a user request into short compilation videos and/or clip segments.",
     model: buildModel(),
     tools: [
-      transcriber,
+      transcribeSource,
       topicScout,
       compilation,
       segmentScout,
@@ -86,7 +81,7 @@ You are the Orchestrator. The user will talk to you in plain English (e.g. "make
 
 Step 0 — Classify the request:
 - PURE-METADATA questions (file listings, durations, memory recall — things answerable without video content): use list_dir / read_file / memory_read / project_overview and stop. Do NOT transcribe. Do NOT call memory_append.
-- CONTENT questions that require knowing what's SAID or SHOWN in the video(s) — e.g. "summarize these mkvs", "what's in foo.mkv", "what topics does this recording cover", "give me an overview", "list the interesting moments", "what did we talk about" — DO require transcription. Transcribe the relevant MKVs (use agents_transcribe_many if 2+), then read_file each .transcript.json and write the summary/overview directly in your final answer. You are NOT forbidden from transcribing just because no clips are requested — transcription is how you see the content. Skip Steps 1-3 (no scouting, no rendering). You MAY still call memory_append with a short summary of what you found, but it is optional for content-questions (unlike video-production runs, which require it).
+- CONTENT questions that require knowing what's SAID or SHOWN in the video(s) — e.g. "summarize these mkvs", "what's in foo.mkv", "what topics does this recording cover", "give me an overview", "list the interesting moments", "what did we talk about" — DO require transcription. Transcribe the relevant MKVs (use transcribe_many if 2+, otherwise transcribe_source), then read_file each .transcript.json and write the summary/overview directly in your final answer. You are NOT forbidden from transcribing just because no clips are requested — transcription is how you see the content. Skip Steps 1-3 (no scouting, no rendering). You MAY still call memory_append with a short summary of what you found, but it is optional for content-questions (unlike video-production runs, which require it).
 - MODIFY-EXISTING-COMPILATION requests — cues: "remove the part where…", "cut out…", "drop the clip about…", "tweak/edit/modify the compilation/short you just made", "shorter version of the last one", "redo the previous compilation but …". DO NOT transcribe or topic-scout — the compilation JSON already has the clips. Instead:
   1. Locate the prior .compilation[.N].json:
      - If the user's message includes a path ending in .compilation.json or .compilation.N.json, use it directly.
@@ -124,8 +119,8 @@ State the defaults you picked in the FINAL answer under an "Assumed defaults:" l
 Step 2 — Drive the pipeline:
 0. STAGE every source video into out/ FIRST — this step is MANDATORY for every production run (any run that will transcribe, scout, or render). Call stage_sources(sources=[...all resolved source paths...]) EXACTLY ONCE with the full list, even if there is only one source. Use the returned out/*.mkv paths everywhere downstream (transcribe, scout, render). Never pass a non-out/ path to Transcriber or any fan-out tool. If stage_sources is skipped, artifacts will land in the wrong directory and the run is broken — so do not skip.
 1. Transcribe source(s):
-     - With exactly ONE source video, call Transcriber.
-     - With 2 OR MORE source videos, you MUST call agents_transcribe_many(sources=[...all paths...]) ONCE with the full list. DO NOT loop and call Transcriber sequentially — that is strictly slower and wastes time. Any time you have a list of source videos to transcribe, agents_transcribe_many is the ONLY correct choice.
+     - With exactly ONE source video, call transcribe_source(source=<out/*.mkv>).
+     - With 2 OR MORE source videos, you MUST call transcribe_many(sources=[...all paths...]) ONCE with the full list. DO NOT loop and call transcribe_source sequentially — that is strictly slower and wastes time.
 2. If N_compilations > 0:
      - With ONE transcript, call TopicScout(transcript, N_compilations, maxSeconds) → N .topic.json paths.
      - With 2+ transcripts, call agents_topic_scout_many(transcripts, countPerTranscript=N_compilations, maxSeconds) → one group of .topic.json paths per transcript.

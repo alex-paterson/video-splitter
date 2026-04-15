@@ -1,5 +1,43 @@
 import { z } from "zod";
-import { cliTool } from "./cli-tool.js";
+import path from "path";
+import fs from "fs";
+import { tool } from "@strands-agents/sdk";
+import { cliTool, runCli } from "./cli-tool.js";
+
+export async function transcribeSourceFn(source: string): Promise<string> {
+  const abs = path.resolve(source);
+  if (!fs.existsSync(abs)) return `ERROR: source not found: ${abs}`;
+  const dir = path.dirname(abs);
+  const base = path.basename(abs).replace(/\.[^.]+$/, "");
+  const transcriptPath = path.join(dir, `${base}.transcript.json`);
+  if (fs.existsSync(transcriptPath) && fs.statSync(transcriptPath).size > 0) {
+    return transcriptPath;
+  }
+  const audioPath = path.join(dir, `${base}.audio.mp3`);
+  if (!(fs.existsSync(audioPath) && fs.statSync(audioPath).size > 0)) {
+    await runCli("src/commands/video-to-audio.ts", [abs]);
+  }
+  await runCli("src/commands/audio-to-transcript.ts", [audioPath, "--source", abs]);
+  return transcriptPath;
+}
+
+export const transcribeSource = tool({
+  name: "transcribe_source",
+  description:
+    "Produce (or reuse) a .transcript.json for a source video. If a non-empty <base>.transcript.json already sits next to the source, it is returned as-is. Otherwise runs video_to_audio then audio_to_transcript. Returns the absolute transcript path.",
+  inputSchema: z.object({
+    source: z.string().describe("Absolute path to the source video (MKV)"),
+  }),
+  callback: async ({ source }: { source: string }) => {
+    try {
+      return await transcribeSourceFn(source);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("RUN_CANCELLED")) throw e;
+      return `ERROR: ${msg}`;
+    }
+  },
+});
 
 export const videoToAudio = cliTool({
   name: "video_to_audio",

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { bus } from "../lib/event-bus.js";
 import { isCancelled } from "./cli-tool.js";
 import { runCtx } from "../lib/run-context.js";
+import { transcribeSourceFn } from "./commands.js";
 
 type ToolCtx = { agent?: { cancelSignal?: AbortSignal } };
 const getCancelSignal = (ctx?: ToolCtx): AbortSignal | undefined => ctx?.agent?.cancelSignal;
@@ -315,11 +316,11 @@ export function makeSegmentScoutManyTool(makeAgent: () => Agent) {
  * Wraps a Transcriber agent as a fan-out tool that transcribes several source
  * videos concurrently. Caps concurrency to avoid flooding the Whisper API.
  */
-export function makeTranscribeManyTool(makeAgent: () => Agent) {
+export function makeTranscribeManyTool() {
   return tool({
-    name: "agents_transcribe_many",
+    name: "transcribe_many",
     description:
-      "Transcribe several source videos concurrently. Returns one .transcript.json path per input (or ERROR line), in input order. Prefer this over calling the Transcriber agent sequentially when you have >1 video.",
+      "Transcribe several source videos concurrently. Returns one .transcript.json path per input (or ERROR line), in input order. Prefer this over calling transcribe_source sequentially when you have >1 video.",
     inputSchema: z.object({
       sources: z
         .array(z.string())
@@ -336,25 +337,13 @@ export function makeTranscribeManyTool(makeAgent: () => Agent) {
     }: {
       sources: string[];
       concurrency?: number;
-    }, ctx?: ToolCtx) => {
-      const sig = getCancelSignal(ctx);
+    }) => {
       const cap = Math.max(1, Math.min(concurrency ?? 4, 8));
-      const runs = await pool(sources, cap, (src, i) =>
-        invokeSubagent(
-          makeAgent(),
-          `transcribe[${i + 1}/${sources.length}] ${src}`,
-          `Transcribe this source video: ${src}`,
-          sig,
-        )
-      );
+      const runs = await pool(sources, cap, (src) => transcribeSourceFn(src));
       return runs
         .map((r, i) => {
           if (r.status === "fulfilled") {
-            const content =
-              typeof r.value === "string"
-                ? r.value
-                : (r.value as { content?: string }).content ?? JSON.stringify(r.value);
-            return `[${i + 1}] ${sources[i]} → ${content.trim()}`;
+            return `[${i + 1}] ${sources[i]} → ${String(r.value).trim()}`;
           }
           return `[${i + 1}] ${sources[i]} → ERROR: ${r.reason}`;
         })
@@ -428,7 +417,7 @@ export function makePlanAndRenderManyTool(makeAgent: () => Agent) {
           ? `\nMAX SECONDS: ${maxSeconds}. Pass maxSeconds=${maxSeconds} to topic_to_compilation; if the plan is OVER_MAX, iterate with compilation_refine (up to 4×) until DURATION <= MAX. Render the latest version.`
           : "";
       const bleepHint = bleep || bleepWords
-        ? `\nBLEEP: after silence-stripping, run transcript_to_bleep_plan and video_apply_bleep (mode=mute).${bleepWords ? ` Use these words: ${bleepWords}.` : " Use auto=true."}`
+        ? `\nBLEEP: as the FINAL step, call video_bleep on the silence-stripped MP4.${bleepWords ? ` Pass words="${bleepWords}".` : " Pass auto=true."} Return the resulting .bleeped.mp4 path.`
         : "";
       const bannerHint = banner
         ? "\nBANNER: REQUIRED. Run topic_to_banner and pass banner=<png> to compilation_render. Verify the render's stderr shows 'Banner: <path>' (not '(none)')."
@@ -502,7 +491,7 @@ export function makePlanAndRenderSegmentsTool(makeAgent: () => Agent) {
           ? `\nHARD CEILING: ${maxSeconds} seconds. If the segment file indicates it's over (or a DISCARDED line is surfaced), your final answer is exactly the DISCARDED line.`
           : "";
       const bleepHint = bleep || bleepWords
-        ? `\nBLEEP: after silence-stripping, run transcript_to_bleep_plan and video_apply_bleep (mode=mute).${bleepWords ? ` Use these words: ${bleepWords}.` : " Use auto=true."}`
+        ? `\nBLEEP: as the FINAL step, call video_bleep on the silence-stripped MP4.${bleepWords ? ` Pass words="${bleepWords}".` : " Pass auto=true."} Return the resulting .bleeped.mp4 path.`
         : "";
       const bannerHint = banner
         ? "\nBANNER: REQUIRED. Run topic_to_banner and pass banner=<png> to segment_render. Verify the render's stderr shows 'Banner: <path>' (not '(none)')."
