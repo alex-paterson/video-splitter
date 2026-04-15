@@ -18,6 +18,8 @@ const CollapseContext = createContext<{ allCollapsed: boolean; tick: number }>({
   tick: 0,
 });
 
+const ThinkingContext = createContext(false);
+
 type OutFile = { name: string; size: number; created_ms: number };
 
 const STORAGE_KEY = "agent-stream-events-v1";
@@ -42,6 +44,18 @@ export function App() {
   const [lastRunId, setLastRunId] = useState<string | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [wrap, setWrap] = useState(true);
+  const [hideStdio, setHideStdio] = useState(() => {
+    try { const v = localStorage.getItem("agent-stream-hide-stdio-v1"); return v === null ? true : v === "1"; } catch { return true; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("agent-stream-hide-stdio-v1", hideStdio ? "1" : "0"); } catch { }
+  }, [hideStdio]);
+  const [thinking, setThinking] = useState(() => {
+    try { const v = localStorage.getItem("agent-stream-thinking-v1"); return v === null ? true : v === "1"; } catch { return true; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("agent-stream-thinking-v1", thinking ? "1" : "0"); } catch { }
+  }, [thinking]);
   const [filterLanguage, setFilterLanguage] = useState(true);
   const [safeForWork, setSafeForWork] = useState(true);
   const [allCollapsed, setAllCollapsed] = useState(false);
@@ -146,129 +160,134 @@ export function App() {
 
   return (
     <WrapContext.Provider value={wrap}>
-      <CollapseContext.Provider value={{ allCollapsed, tick: collapseTick }}>
-        <div className="min-h-screen bg-neutral-950 text-neutral-100">
-          <header className="sticky top-0 z-10 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur">
-            <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
-              <h1 className="text-lg font-semibold tracking-tight">Agent Stream</h1>
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={toggleAll}
-                  className="rounded-md bg-neutral-800 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-700"
-                >
-                  {allCollapsed ? "expand all" : "collapse all"}
-                </button>
-                <button
-                  onClick={() => {
-                    setEvents([]);
-                    try { localStorage.removeItem(STORAGE_KEY); } catch { }
-                  }}
-                  className="rounded-md bg-neutral-800 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-700"
-                >
-                  clear
-                </button>
-                <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
-                  <input
-                    type="checkbox"
-                    checked={wrap}
-                    onChange={(e) => setWrap(e.target.checked)}
-                    className="h-3 w-3 accent-emerald-600"
-                  />
-                  wrap
-                </label>
-                <StatusDot status={status} />
+      <ThinkingContext.Provider value={thinking}>
+        <CollapseContext.Provider value={{ allCollapsed, tick: collapseTick }}>
+          <div className="min-h-screen bg-neutral-950 text-neutral-100">
+            <header className="sticky top-0 z-10 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur">
+              <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
+                <h1 className="text-lg font-semibold tracking-tight">Content Machine</h1>
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={toggleAll}
+                    className="rounded-md bg-neutral-800 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-700"
+                  >
+                    {allCollapsed ? "Expand All" : "Collapse All"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEvents([]);
+                      try { localStorage.removeItem(STORAGE_KEY); } catch { }
+                    }}
+                    className="rounded-md bg-neutral-800 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-700"
+                  >
+                    Clear
+                  </button>
+                  <StatusDot status={status} />
+                </div>
               </div>
-            </div>
-          </header>
+            </header>
 
-          <main className="mx-auto max-w-3xl px-6 py-6">
-            <FilesPanel />
-            <div className="mb-6 rounded-lg border border-neutral-800 bg-neutral-900 p-3">
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                    e.preventDefault();
-                    runPrompt();
-                  }
-                }}
-                placeholder={`e.g.
+            <main className="mx-auto max-w-3xl px-6 py-6">
+              <FilesPanel />
+              <div className="mb-6 rounded-lg border border-neutral-800 bg-neutral-900 p-3">
+                <textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      runPrompt();
+                    }
+                  }}
+                  placeholder={`e.g.
   "make me 3 shorts from /home/alex/OBS/foo.mkv, max 60s each"
   "2 clips of the funniest moments from foo.mkv, portrait 9:16"
   "1 compilation about the bugs we hit, landscape 1080p, with banner"
   "90s highlight reel from foo.mkv, no swearing"
   "find the segment where we talk about auth and render it"
   "what's in foo.mkv? list the main topics"`}
-                rows={8}
-                className="w-full resize-y rounded-md bg-neutral-950 px-3 py-2 font-mono text-sm text-neutral-100 outline-none ring-1 ring-neutral-800 focus:ring-emerald-600"
+                  rows={8}
+                  className="w-full resize-y rounded-md bg-neutral-950 px-3 py-2 font-mono text-sm text-neutral-100 outline-none ring-1 ring-neutral-800 focus:ring-emerald-600"
+                />
+                <div className="mt-2 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
+                      <input
+                        type="checkbox"
+                        checked={filterLanguage}
+                        onChange={(e) => setFilterLanguage(e.target.checked)}
+                        className="h-3 w-3 accent-emerald-600"
+                      />
+                      Bleep Curse Words
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
+                      <input
+                        type="checkbox"
+                        checked={safeForWork}
+                        onChange={(e) => setSafeForWork(e.target.checked)}
+                        className="h-3 w-3 accent-emerald-600"
+                      />
+                      Safe for Work
+                    </label>
+                    <span className="font-mono text-xs text-neutral-500">
+                      {lastRunId ? `last run_id: ${lastRunId}` : "⌘/Ctrl+Enter to run"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {activeRunId ? (
+                      <button
+                        onClick={cancelRun}
+                        className="rounded-md bg-red-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-500"
+                      >
+                        Cancel
+                      </button>
+                    ) : (
+                      <button
+                        onClick={runPrompt}
+                        disabled={running || !prompt.trim()}
+                        className="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-neutral-700"
+                      >
+                        {running ? "Submitting…" : "Run"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {events.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-neutral-800 p-10 text-center text-sm text-neutral-500">
+                  No events yet. Submit a prompt above to start.
+                </div>
+              ) : (
+                <ol className="space-y-3">
+                  {groupEvents(events)
+                    .filter((g) => !(hideStdio && g.kind === "stdio"))
+                    .slice()
+                    .reverse()
+                    .map((g) =>
+                      g.kind === "tool" ? (
+                        <ToolGroup key={g.id} group={g} />
+                      ) : g.kind === "stdio" ? (
+                        <StdioGroup key={g.id} group={g} />
+                      ) : g.kind === "subagent" ? (
+                        <SubagentGroup key={g.id} group={g} />
+                      ) : (
+                        <EventBlock key={g.ev.id} ev={g.ev} />
+                      )
+                    )}
+                </ol>
+              )}
+              <AdvancedSettings
+                wrap={wrap}
+                setWrap={setWrap}
+                hideStdio={hideStdio}
+                setHideStdio={setHideStdio}
+                thinking={thinking}
+                setThinking={setThinking}
               />
-              <div className="mt-2 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
-                    <input
-                      type="checkbox"
-                      checked={filterLanguage}
-                      onChange={(e) => setFilterLanguage(e.target.checked)}
-                      className="h-3 w-3 accent-emerald-600"
-                    />
-                    Bleep curse words
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
-                    <input
-                      type="checkbox"
-                      checked={safeForWork}
-                      onChange={(e) => setSafeForWork(e.target.checked)}
-                      className="h-3 w-3 accent-emerald-600"
-                    />
-                    Safe for work
-                  </label>
-                  <span className="font-mono text-xs text-neutral-500">
-                    {lastRunId ? `last run_id: ${lastRunId}` : "⌘/Ctrl+Enter to run"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {activeRunId ? (
-                    <button
-                      onClick={cancelRun}
-                      className="rounded-md bg-red-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-500"
-                    >
-                      Cancel
-                    </button>
-                  ) : (
-                    <button
-                      onClick={runPrompt}
-                      disabled={running || !prompt.trim()}
-                      className="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-neutral-700"
-                    >
-                      {running ? "Submitting…" : "Run"}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-            {events.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-neutral-800 p-10 text-center text-sm text-neutral-500">
-                No events yet. Submit a prompt above to start.
-              </div>
-            ) : (
-              <ol className="space-y-3">
-                {groupEvents(events).slice().reverse().map((g) =>
-                  g.kind === "tool" ? (
-                    <ToolGroup key={g.id} group={g} />
-                  ) : g.kind === "stdio" ? (
-                    <StdioGroup key={g.id} group={g} />
-                  ) : g.kind === "subagent" ? (
-                    <SubagentGroup key={g.id} group={g} />
-                  ) : (
-                    <EventBlock key={g.ev.id} ev={g.ev} />
-                  )
-                )}
-              </ol>
-            )}
-          </main>
-        </div>
-      </CollapseContext.Provider>
+            </main>
+          </div>
+        </CollapseContext.Provider>
+      </ThinkingContext.Provider>
     </WrapContext.Provider>
   );
 }
@@ -277,6 +296,12 @@ function EventBlock({ ev }: { ev: AgentEvent }) {
   const d = (ev.data && typeof ev.data === "object" ? ev.data : {}) as Record<string, unknown>;
   const runId = typeof d.run_id === "string" ? d.run_id : undefined;
   const ts = typeof d.ts === "number" ? d.ts : ev.at;
+  const collapse = useContext(CollapseContext);
+  const collapsible = ev.type === "agent_start" || ev.type === "agent_end";
+  const [expanded, setExpanded] = useState(true);
+  useEffect(() => {
+    setExpanded(!collapse.allCollapsed);
+  }, [collapse.tick]);
   const typeColor =
     ev.type === "error"
       ? "text-red-400"
@@ -287,9 +312,14 @@ function EventBlock({ ev }: { ev: AgentEvent }) {
           : ev.type === "stdio"
             ? "text-neutral-400"
             : "text-amber-400";
+  const HeaderTag = (collapsible ? "button" : "div") as "button" | "div";
   return (
     <li className="overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
-      <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-4 py-2">
+      <HeaderTag
+        onClick={collapsible ? () => setExpanded((v) => !v) : undefined}
+        className={`flex w-full items-center justify-between gap-3 border-b border-neutral-800 px-4 py-2 text-left ${collapsible ? "hover:bg-neutral-800/50" : ""
+          }`}
+      >
         <div className="flex items-center gap-2">
           <span className={`rounded bg-neutral-800 px-2 py-0.5 font-mono text-xs ${typeColor}`}>
             {ev.type}
@@ -305,9 +335,10 @@ function EventBlock({ ev }: { ev: AgentEvent }) {
         </div>
         <span className="font-mono text-xs text-neutral-500" title={new Date(ts).toISOString()}>
           {new Date(ts).toLocaleTimeString()}
+          {collapsible ? ` ${expanded ? "▾" : "▸"}` : ""}
         </span>
-      </div>
-      <EventBody type={ev.type} data={ev.data} />
+      </HeaderTag>
+      {(!collapsible || expanded) && <EventBody type={ev.type} data={ev.data} />}
     </li>
   );
 }
@@ -453,7 +484,13 @@ function groupEvents(events: AgentEvent[]): Group[] {
       if (ev.type === "tool_end") g.closed = true;
       continue;
     }
-    if (ev.type === "subagent_start" || ev.type === "subagent_end") {
+    if (
+      ev.type === "subagent_start" ||
+      ev.type === "subagent_end" ||
+      ev.type === "subagent_reasoning" ||
+      ev.type === "agent_tool_call_start" ||
+      ev.type === "agent_tool_call_end"
+    ) {
       const label = d?.label ?? "(unknown)";
       const agent = d?.agent ?? "";
       let g = openByLabel.get(label);
@@ -579,12 +616,38 @@ function ToolGroup({ group }: { group: Extract<Group, { kind: "tool" }> }) {
 
 function SubagentGroup({ group }: { group: Extract<Group, { kind: "subagent" }> }) {
   const collapse = useContext(CollapseContext);
+  const thinking = useContext(ThinkingContext);
+  const wrapCls = useWrapClass();
   const [expanded, setExpanded] = useState(false);
   useEffect(() => {
     setExpanded(!collapse.allCollapsed);
   }, [collapse.tick]);
   const start = group.events.find((e) => e.type === "subagent_start");
   const end = group.events.find((e) => e.type === "subagent_end");
+  const reasoning = group.events
+    .filter((e) => e.type === "subagent_reasoning")
+    .map((e) => ((e.data as { text?: string } | null)?.text ?? ""))
+    .filter(Boolean)
+    .join("\n\n");
+  const toolCalls = (() => {
+    const byId = new Map<string, { name: string; input?: unknown; startAt: number; endAt?: number; error?: string }>();
+    const order: string[] = [];
+    for (const e of group.events) {
+      const d = (e.data as { tool_use_id?: string; tool_name?: string; input?: unknown; error?: string } | null) ?? null;
+      const id = d?.tool_use_id;
+      if (!id) continue;
+      if (e.type === "agent_tool_call_start") {
+        if (!byId.has(id)) {
+          byId.set(id, { name: d.tool_name ?? "?", input: d.input, startAt: e.at });
+          order.push(id);
+        }
+      } else if (e.type === "agent_tool_call_end") {
+        const cur = byId.get(id);
+        if (cur) { cur.endAt = e.at; cur.error = d.error; }
+      }
+    }
+    return order.map((id) => ({ id, ...byId.get(id)! }));
+  })();
   const endData = (end?.data as { duration_ms?: number; error?: string } | undefined) ?? {};
   const duration = endData.duration_ms;
   const err = endData.error;
@@ -622,8 +685,143 @@ function SubagentGroup({ group }: { group: Extract<Group, { kind: "subagent" }> 
           {new Date(start?.at ?? group.events[0].at).toLocaleTimeString()} {expanded ? "▾" : "▸"}
         </span>
       </button>
+      {expanded && thinking && reasoning && (
+        <ReasoningPane text={reasoning} wrapCls={wrapCls} />
+      )}
+      {expanded && toolCalls.length > 0 && (
+        <ul className="divide-y divide-neutral-800">
+          {toolCalls.slice().reverse().map((tc) => (
+            <ToolCallItem key={tc.id} tc={tc} />
+          ))}
+        </ul>
+      )}
       {expanded && err && (
         <div className="px-4 py-2 font-mono text-xs text-red-300">{err}</div>
+      )}
+    </li>
+  );
+}
+
+function AdvancedSettings({
+  wrap,
+  setWrap,
+  hideStdio,
+  setHideStdio,
+  thinking,
+  setThinking,
+}: {
+  wrap: boolean;
+  setWrap: (v: boolean) => void;
+  hideStdio: boolean;
+  setHideStdio: (v: boolean) => void;
+  thinking: boolean;
+  setThinking: (v: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-8 overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-4 py-2 hover:bg-neutral-800/50"
+      >
+        <span className="text-sm font-medium text-neutral-300">Advanced Settings</span>
+        <span className="font-mono text-xs text-neutral-500">{open ? "▾" : "▸"}</span>
+      </button>
+      {open && (
+        <div className="flex flex-col gap-2 border-t border-neutral-800 px-4 py-3">
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
+            <input
+              type="checkbox"
+              checked={thinking}
+              onChange={(e) => setThinking(e.target.checked)}
+              className="h-3 w-3 accent-emerald-600"
+            />
+            Show Agent Thinking
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
+            <input
+              type="checkbox"
+              checked={wrap}
+              onChange={(e) => setWrap(e.target.checked)}
+              className="h-3 w-3 accent-emerald-600"
+            />
+            Wrap Long Lines
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
+            <input
+              type="checkbox"
+              checked={hideStdio}
+              onChange={(e) => setHideStdio(e.target.checked)}
+              className="h-3 w-3 accent-emerald-600"
+            />
+            Hide Stdio Blocks
+          </label>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReasoningPane({ text, wrapCls }: { text: string; wrapCls: string }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="border-t border-neutral-800">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-4 py-1.5 text-left hover:bg-neutral-800/40"
+      >
+        <span className="rounded bg-neutral-800 px-2 py-0.5 font-mono text-xs text-neutral-400">
+          Thinking
+        </span>
+        <span className="font-mono text-xs text-neutral-500">{open ? "▾" : "▸"}</span>
+      </button>
+      {open && (
+        <pre className={`max-h-80 overflow-auto px-4 py-2 font-mono text-xs leading-relaxed text-neutral-400 ${wrapCls}`}>
+          {text}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function ToolCallItem({
+  tc,
+}: {
+  tc: { id: string; name: string; input?: unknown; startAt: number; endAt?: number; error?: string };
+}) {
+  const [open, setOpen] = useState(false);
+  const running = tc.endAt === undefined;
+  const dur = tc.endAt !== undefined ? (tc.endAt - tc.startAt) / 1000 : undefined;
+  const preview =
+    tc.input === undefined
+      ? ""
+      : typeof tc.input === "string"
+        ? tc.input
+        : JSON.stringify(tc.input, null, 2);
+  const color = tc.error ? "text-red-400" : running ? "text-amber-400" : "text-emerald-400";
+  return (
+    <li>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 px-4 py-1.5 text-left hover:bg-neutral-800/40"
+      >
+        <span className="rounded bg-neutral-800 px-2 py-0.5 font-mono text-xs text-sky-300">
+          {tc.name}
+        </span>
+        <span className={`font-mono text-xs ${color}`}>
+          {tc.error ? "error" : running ? "running" : "done"}
+        </span>
+        {dur !== undefined && (
+          <span className="font-mono text-xs text-neutral-500">{dur.toFixed(1)}s</span>
+        )}
+        {preview && (
+          <span className="ml-auto font-mono text-xs text-neutral-500">{open ? "▾" : "▸"}</span>
+        )}
+      </button>
+      {open && preview && (
+        <pre className="whitespace-pre-wrap break-all px-4 pb-2 font-mono text-xs text-neutral-500">
+          {preview}
+        </pre>
       )}
     </li>
   );
@@ -680,7 +878,7 @@ function FilesPanel() {
                   download={f.name}
                   className="rounded-md bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-500"
                 >
-                  download
+                  Download
                 </a>
               </div>
             ))

@@ -3,13 +3,72 @@ import { z } from "zod";
 import { bus } from "../lib/event-bus.js";
 import { isCancelled } from "./cli-tool.js";
 
+export async function streamAgentWithReasoning(
+  agent: Agent,
+  label: string,
+  agentId: string,
+  prompt: string
+): Promise<unknown> {
+  const gen = agent.stream(prompt);
+  let result: unknown;
+  while (true) {
+    if (isCancelled(bus.getCurrentRunId())) {
+      try { await gen.return(undefined as never); } catch { /* ignore */ }
+      throw new Error("RUN_CANCELLED");
+    }
+    const next = await gen.next();
+    if (next.done) {
+      result = next.value;
+      break;
+    }
+    const ev = next.value as {
+      type?: string;
+      contentBlock?: { type?: string; text?: string };
+      toolUse?: { name?: string; toolUseId?: string; input?: unknown };
+      result?: unknown;
+      error?: { message?: string } | Error;
+    };
+    if (ev?.type === "contentBlockEvent") {
+      const cb = ev.contentBlock;
+      if (cb?.type === "reasoningBlock" || cb?.type === "textBlock") {
+        const text = cb.text ?? "";
+        if (text) bus.publish({ type: "subagent_reasoning", agent: agentId, label, text });
+      }
+    } else if (ev?.type === "beforeToolCallEvent" && ev.toolUse) {
+      bus.publish({
+        type: "agent_tool_call_start",
+        agent: agentId,
+        label,
+        tool_name: ev.toolUse.name,
+        tool_use_id: ev.toolUse.toolUseId,
+        input: ev.toolUse.input,
+      });
+    } else if (ev?.type === "afterToolCallEvent" && ev.toolUse) {
+      const errMsg = ev.error
+        ? ev.error instanceof Error
+          ? ev.error.message
+          : (ev.error as { message?: string }).message ?? String(ev.error)
+        : undefined;
+      bus.publish({
+        type: "agent_tool_call_end",
+        agent: agentId,
+        label,
+        tool_name: ev.toolUse.name,
+        tool_use_id: ev.toolUse.toolUseId,
+        error: errMsg,
+      });
+    }
+  }
+  return result;
+}
+
 async function invokeSubagent(agent: Agent, label: string, prompt: string): Promise<unknown> {
   if (isCancelled(bus.getCurrentRunId())) throw new Error("RUN_CANCELLED");
   const agentId = (agent as unknown as { id?: string }).id ?? "agent";
   const startedAt = Date.now();
   bus.publish({ type: "subagent_start", agent: agentId, label });
   try {
-    const result = await agent.invoke(prompt);
+    const result = await streamAgentWithReasoning(agent, label, agentId, prompt);
     bus.publish({ type: "subagent_end", agent: agentId, label, duration_ms: Date.now() - startedAt });
     return result;
   } catch (e) {

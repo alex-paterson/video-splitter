@@ -12,6 +12,7 @@ import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
 import { makeOrchestratorAgent } from "./agents/orchestrator.js";
+import { streamAgentWithReasoning } from "./tools/fan-out.js";
 import { bus, BusEvent } from "./lib/event-bus.js";
 import { killRun, clearCancelled, isCancelled } from "./tools/cli-tool.js";
 
@@ -139,8 +140,20 @@ const server = http.createServer(async (req, res) => {
         const cancelPromise = new Promise<never>((_, reject) => {
           runCancelRejects.set(run_id, reject);
         });
+        const orchStartedAt = Date.now();
+        bus.publish({ type: "subagent_start", run_id, agent: "orchestrator", label: "orchestrator" });
         try {
-          const result = await Promise.race([orchestrator.invoke(body.prompt!), cancelPromise]);
+          const result = await Promise.race([
+            streamAgentWithReasoning(orchestrator, "orchestrator", "orchestrator", body.prompt!),
+            cancelPromise,
+          ]);
+          bus.publish({
+            type: "subagent_end",
+            run_id,
+            agent: "orchestrator",
+            label: "orchestrator",
+            duration_ms: Date.now() - orchStartedAt,
+          });
           const content =
             typeof result === "string"
               ? result
@@ -148,6 +161,14 @@ const server = http.createServer(async (req, res) => {
           bus.publish({ type: "agent_end", run_id, content });
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
+          bus.publish({
+            type: "subagent_end",
+            run_id,
+            agent: "orchestrator",
+            label: "orchestrator",
+            duration_ms: Date.now() - orchStartedAt,
+            error: msg,
+          });
           if (isCancelled(run_id)) {
             bus.publish({ type: "agent_end", run_id, error: true, cancelled: true });
           } else {
