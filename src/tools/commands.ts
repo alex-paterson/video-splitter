@@ -85,12 +85,13 @@ export const topicToBanner = cliTool({
 export const compilationRefine = cliTool({
   name: "compilation_refine",
   description:
-    "Trim an existing .compilation.json to fit under maxSeconds by dropping/shortening least-essential clips. Writes the next version (.compilation.2.json, .3.json, …). Stderr reports `DURATION: Ns MAX: Ms` and `OVER_MAX: …` if further refinement is still needed. Iterate by calling again on the new path.",
+    "Modify an existing .compilation.json. Pass `maxSeconds` to trim to a length budget, `instruction` for free-text edits (e.g. \"remove the part where X happens\"), or both. Writes the next version (.compilation.2.json, .3.json, …). Stderr reports `DURATION: Ns MAX: Ms` and `OVER_MAX: …` when a length ceiling is given and still exceeded. Iterate by calling again on the new path.",
   script: "src/commands/compilation-refine.ts",
   positional: ["compilation"],
   input: z.object({
     compilation: z.string().describe("Path to any .compilation[.N].json"),
-    maxSeconds: z.number().describe("Hard ceiling in seconds"),
+    maxSeconds: z.number().optional().describe("Hard ceiling in seconds (optional if instruction is provided)"),
+    instruction: z.string().optional().describe("Free-text modification directive, e.g. 'drop the clip where the speaker talks about X'"),
     output: z.string().optional(),
   }),
 });

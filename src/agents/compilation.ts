@@ -31,9 +31,15 @@ export function makeCompilationAgent() {
     systemPrompt: `
 ${HARD_RULES}
 
-You are the CompilationPlanner. You take ONE .topic.json and produce ONE polished short-video MP4.
+You are the CompilationPlanner. You take ONE .topic.json and produce ONE polished short-video MP4, OR you take an existing .compilation[.N].json plus a modification instruction and produce a revised MP4.
 
-Procedure:
+REFINE-EXISTING MODE:
+If the invocation gives you an existing .compilation[.N].json path and a user instruction (e.g. "remove the part where X happens", "drop the clip about Y", "shorter overall"), SKIP steps 1-3 below. Instead:
+  a. read_file the given compilation JSON to confirm it exists and understand the current clips.
+  b. Call compilation_refine with that path and the user's text as the \`instruction\` argument (and pass \`maxSeconds\` too if the user specified a length). It writes the next .compilation.N.json. Do NOT iterate unless a maxSeconds ceiling was given and stderr reports OVER_MAX.
+  c. Continue from step 4 (banner opt-in) on the new .compilation.N.json path.
+
+FRESH-TOPIC MODE (default):
 1. Call topic_to_compilation with the topic path. If the invocation mentions a max-seconds ceiling, pass it as maxSeconds. It writes a .compilation.json next to the topic.
 2. Always call compilation_estimate_duration on the resulting .compilation.json to get the phrase-sum estimate (post-silence-strip) — NEVER estimate durations by hand; LLMs are bad at arithmetic. Use phrase_sum_total_s as the authoritative "will be roughly this long" number, and compare it against the max-seconds ceiling. Look at the topic_to_compilation stderr for "DURATION: Ns MAX: Ms" too. If it also reports "OVER_MAX: ... cut_at_least=Ks — call compilation_refine on <path>", you MUST iterate: call compilation_refine with that path and the same maxSeconds. It writes the next version (.compilation.2.json, then .3.json, ...) and reports DURATION / OVER_MAX the same way. Keep calling compilation_refine on the latest path until DURATION <= MAX or you have called refine 4 times. Always render the LATEST version. Never render a plan that is still OVER_MAX unless you have exhausted 4 refine attempts (in that case, render the latest and report the final duration in your answer).
 3. Before rendering, read_file the final .compilation[.N].json and sanity-check it:

@@ -80,7 +80,18 @@ export const CompilationSchema = z.object({
 export type CompilationClip = z.infer<typeof CompilationClipSchema>;
 export type Compilation = z.infer<typeof CompilationSchema>;
 
+export function assertClipsHaveTranscript(clips: CompilationClip[]): void {
+  for (const c of clips) {
+    if (!c.transcript || c.transcript.length === 0) {
+      throw new Error(
+        `Clip ${c.start_s.toFixed(2)}→${c.end_s.toFixed(2)} has no transcript content. Refusing to save compilation with empty transcript clip.`
+      );
+    }
+  }
+}
+
 export function saveCompilation(path: string, compilation: Compilation): void {
+  assertClipsHaveTranscript(compilation.clips);
   fs.writeFileSync(path, JSON.stringify(compilation, null, 2));
 }
 

@@ -25,10 +25,11 @@ const program = new Command();
 program
   .name("compilation-refine")
   .description(
-    "Trim a .compilation.json to fit under --max-seconds. Writes the next .compilation.N.json in sequence."
+    "Modify an existing .compilation.json. Either trim to fit --max-seconds, or apply a free-text --instruction (e.g. 'remove the part where X happens'), or both. Writes the next .compilation.N.json in sequence."
   )
   .argument("<compilation>", "Path to .compilation.json (any version)")
-  .requiredOption("--max-seconds <n>", "Maximum total duration (seconds)")
+  .option("--max-seconds <n>", "Maximum total duration (seconds)")
+  .option("--instruction <text>", "Free-text modification instruction (e.g. 'drop the clip about X')")
   .option("--output <path>", "Explicit output path (default: auto-increment)")
   .option("--model <model>", "Claude model", "claude-opus-4-6");
 
@@ -36,7 +37,8 @@ if (process.argv.length <= 2) { program.outputHelp(); process.exit(0); }
 program.parse();
 
 const opts = program.opts<{
-  maxSeconds: string;
+  maxSeconds?: string;
+  instruction?: string;
   output?: string;
   model: string;
 }>();
@@ -76,12 +78,12 @@ async function refine(
   clips: CompilationClip[],
   story: string | undefined,
   topic: string,
-  maxSeconds: number,
+  maxSeconds: number | undefined,
+  instruction: string | undefined,
   model: string,
   client: Anthropic
 ): Promise<CompilationClip[]> {
   const current = totalOf(clips);
-  const over = current - maxSeconds;
   const clipsText = clips
     .map((c, i) => {
       const dur = (c.end_s - c.start_s).toFixed(1);
@@ -92,23 +94,34 @@ async function refine(
     })
     .join("\n\n");
 
-  const prompt = `You are trimming a video compilation to fit a strict time budget.
+  const goalLines: string[] = [];
+  if (instruction) {
+    goalLines.push(`User's modification instruction (apply literally, but preserve narrative flow where the instruction is silent):`);
+    goalLines.push(`  """${instruction}"""`);
+  }
+  if (maxSeconds !== undefined) {
+    const over = current - maxSeconds;
+    goalLines.push(`HARD MAX duration: ${maxSeconds}s (current: ${current.toFixed(1)}s${over > 0 ? `, must cut at least ${over.toFixed(1)}s` : ""}).`);
+  }
+  if (goalLines.length === 0) {
+    throw new Error("refine(): need either instruction or maxSeconds");
+  }
+
+  const prompt = `You are modifying an existing video compilation.
 
 Topic: "${topic}"
 ${story ? `Story arc:\n${story}\n` : ""}
 
-Current total: ${current.toFixed(1)}s
-HARD MAX: ${maxSeconds}s
-Must cut at least: ${over.toFixed(1)}s
+${goalLines.join("\n")}
 
 Clips (indexed; each preserves a transcript excerpt):
 ${clipsText}
 
 Return a JSON array of the clips to KEEP, in chronological order. You may:
-- Drop entire clips (the least essential first)
+- Drop entire clips (matching the user's instruction, or the least essential first when trimming for length)
 - Shrink a clip by tightening its start_s / end_s to a tighter sub-range (values must stay within the original clip's range)
 
-Prefer dropping redundancy over chopping single beats in half. Keep the narrative arc intact. Total duration MUST be <= ${maxSeconds}s.
+Prefer dropping redundancy over chopping single beats in half. Keep the narrative arc intact.${maxSeconds !== undefined ? ` Total duration MUST be <= ${maxSeconds}s.` : ""}
 
 Return ONLY a JSON array:
 [ { "start_s": <number>, "end_s": <number>, "summary": "<optional>" }, ... ]`;
@@ -123,12 +136,14 @@ Return ONLY a JSON array:
   if (!match) throw new Error(`Could not parse refine output:\n${text}`);
   const refined = RefinedArraySchema.parse(JSON.parse(match[0]));
 
-  // Preserve transcript excerpts from the source clips by intersecting ranges.
+  // Preserve transcript excerpts by intersecting the refined range against
+  // every source clip's transcript segments — works even when the LLM shifts
+  // bounds or produces a clip spanning two originals.
+  const allSegments = clips.flatMap((c) => c.transcript ?? []);
   return refined.map((r) => {
-    const src = clips.find((c) => r.start_s >= c.start_s - 0.01 && r.end_s <= c.end_s + 0.01);
-    const transcript = src?.transcript?.filter(
-      (t) => t.end_s > r.start_s && t.start_s < r.end_s
-    );
+    const transcript = allSegments
+      .filter((t) => t.end_s > r.start_s && t.start_s < r.end_s)
+      .sort((a, b) => a.start_s - b.start_s);
     return { ...r, transcript };
   });
 }
@@ -145,21 +160,27 @@ async function main() {
     process.exit(1);
   }
 
-  const maxSeconds = parseFloat(opts.maxSeconds);
+  const maxSeconds = opts.maxSeconds !== undefined ? parseFloat(opts.maxSeconds) : undefined;
+  const instruction = opts.instruction?.trim() || undefined;
+  if (maxSeconds === undefined && !instruction) {
+    console.error("Error: pass --max-seconds and/or --instruction");
+    process.exit(1);
+  }
   const comp = loadCompilation(inputPath);
   const current = totalOf(comp.clips);
 
   process.stderr.write(
-    `Input: ${inputPath}\nCurrent duration: ${current.toFixed(1)}s, target max: ${maxSeconds}s\n`
+    `Input: ${inputPath}\nCurrent duration: ${current.toFixed(1)}s${maxSeconds !== undefined ? `, target max: ${maxSeconds}s` : ""}${instruction ? `\nInstruction: ${instruction}` : ""}\n`
   );
-  if (current <= maxSeconds) {
+  // Only short-circuit when the sole goal is a length trim and we're already under budget.
+  if (!instruction && maxSeconds !== undefined && current <= maxSeconds) {
     process.stderr.write(`Already within budget — no refine needed.\n`);
     process.stderr.write(`DURATION: ${current.toFixed(1)}s MAX: ${maxSeconds}s\n`);
     process.exit(0);
   }
 
   const client = new Anthropic({ apiKey });
-  const refined = await refine(comp.clips, comp.story, comp.topic, maxSeconds, opts.model, client);
+  const refined = await refine(comp.clips, comp.story, comp.topic, maxSeconds, instruction, opts.model, client);
   const newTotal = totalOf(refined);
 
   const outputPath = path.resolve(opts.output ?? nextVersionPath(inputPath));
@@ -169,12 +190,16 @@ async function main() {
     `Refined ${comp.clips.length} → ${refined.length} clip(s), ${current.toFixed(1)}s → ${newTotal.toFixed(1)}s\n`
   );
   process.stderr.write(`Saved: ${outputPath}\n`);
-  process.stderr.write(`DURATION: ${newTotal.toFixed(1)}s MAX: ${maxSeconds}s\n`);
-  if (newTotal > maxSeconds) {
-    const over = newTotal - maxSeconds;
-    process.stderr.write(
-      `OVER_MAX: current=${newTotal.toFixed(1)}s max=${maxSeconds}s cut_at_least=${over.toFixed(1)}s — call compilation_refine again on ${outputPath}\n`
-    );
+  if (maxSeconds !== undefined) {
+    process.stderr.write(`DURATION: ${newTotal.toFixed(1)}s MAX: ${maxSeconds}s\n`);
+    if (newTotal > maxSeconds) {
+      const over = newTotal - maxSeconds;
+      process.stderr.write(
+        `OVER_MAX: current=${newTotal.toFixed(1)}s max=${maxSeconds}s cut_at_least=${over.toFixed(1)}s — call compilation_refine again on ${outputPath}\n`
+      );
+    }
+  } else {
+    process.stderr.write(`DURATION: ${newTotal.toFixed(1)}s\n`);
   }
 }
 

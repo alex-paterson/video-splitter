@@ -59,6 +59,13 @@ export function App() {
   const [allCollapsed, setAllCollapsed] = useState(false);
   const [collapseTick, setCollapseTick] = useState(0);
   const esRef = useRef<EventSource | null>(null);
+  const pendingIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelPendingIdle = () => {
+    if (pendingIdleTimer.current) {
+      clearTimeout(pendingIdleTimer.current);
+      pendingIdleTimer.current = null;
+    }
+  };
 
   const cancelRun = async () => {
     if (!activeRunId) return;
@@ -142,7 +149,16 @@ export function App() {
       const at = typeof obj.ts === "number" ? obj.ts : Date.now();
       const runId = typeof obj.run_id === "string" ? obj.run_id : null;
       if (type === "agent_end" && runId) {
-        setActiveRunId((cur) => (cur === runId ? null : cur));
+        cancelPendingIdle();
+        pendingIdleTimer.current = setTimeout(() => {
+          setActiveRunId((cur) => (cur === runId ? null : cur));
+          pendingIdleTimer.current = null;
+        }, 2000);
+      } else if (type === "agent_start" && runId) {
+        cancelPendingIdle();
+        setActiveRunId(runId);
+      } else if (runId) {
+        cancelPendingIdle();
       }
       setEvents((prev) => {
         if (busId !== null && prev.some((p) => p.id === busId)) return prev;
@@ -153,6 +169,40 @@ export function App() {
     return () => {
       es.close();
       esRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    let nullStreak = 0;
+    let stopped = false;
+    const tick = async () => {
+      if (stopped) return;
+      if (document.visibilityState !== "visible") return;
+      try {
+        const r = await fetch("/status");
+        if (!r.ok) return;
+        const j = (await r.json()) as { active_run_id: string | null };
+        if (j.active_run_id) {
+          nullStreak = 0;
+          setActiveRunId((cur) => cur ?? j.active_run_id);
+        } else {
+          nullStreak++;
+          if (nullStreak >= 2) {
+            cancelPendingIdle();
+            setActiveRunId(null);
+          }
+        }
+      } catch {
+        nullStreak = 0;
+      }
+    };
+    const interval = setInterval(tick, 3000);
+    const onVis = () => { if (document.visibilityState === "visible") tick(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      stopped = true;
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVis);
     };
   }, []);
 
@@ -593,14 +643,14 @@ function ToolGroup({ group }: { group: Extract<Group, { kind: "tool" }> }) {
   const duration = (end?.data as { duration_ms?: number } | undefined)?.duration_ms;
   const runActive = useContext(RunActiveContext);
   const status = !group.closed
-    ? (runActive ? "running" : "cancelled")
+    ? (runActive ? "running" : "unknown")
     : code === 0
       ? "done"
       : `exit ${code}`;
   const statusColor =
     status === "running"
       ? "text-amber-400"
-      : status === "cancelled"
+      : status === "unknown"
         ? "text-neutral-500"
         : status === "done"
           ? "text-emerald-400"
@@ -701,11 +751,11 @@ function SubagentGroup({ group }: { group: Extract<Group, { kind: "subagent" }> 
   const duration = endData.duration_ms;
   const err = endData.error;
   const runActive = useContext(RunActiveContext);
-  const status = !group.closed ? (runActive ? "running" : "cancelled") : err ? "error" : "done";
+  const status = !group.closed ? (runActive ? "running" : "unknown") : err ? "error" : "done";
   const statusColor =
     status === "running"
       ? "text-amber-400"
-      : status === "cancelled"
+      : status === "unknown"
         ? "text-neutral-500"
         : status === "done"
           ? "text-emerald-400"
@@ -873,7 +923,7 @@ function ToolCallItem({
   const runActive = useContext(RunActiveContext);
   const open_ = tc.endAt === undefined;
   const running = open_ && runActive;
-  const cancelled = open_ && !runActive;
+  const unknown = open_ && !runActive;
   const dur = tc.endAt !== undefined ? (tc.endAt - tc.startAt) / 1000 : undefined;
   const preview =
     tc.input === undefined
@@ -885,10 +935,10 @@ function ToolCallItem({
     ? "text-red-400"
     : running
       ? "text-amber-400"
-      : cancelled
+      : unknown
         ? "text-neutral-500"
         : "text-emerald-400";
-  const statusLabel = tc.error ? "error" : running ? "running" : cancelled ? "cancelled" : "done";
+  const statusLabel = tc.error ? "error" : running ? "running" : unknown ? "unknown" : "done";
   return (
     <li data-block="tool-call" data-tool-call-name={tc.name} data-tool-call-status={statusLabel}>
       <button

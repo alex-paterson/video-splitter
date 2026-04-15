@@ -167,6 +167,18 @@ function mergeClips(clips: CompilationClip[], gapSecs: number): CompilationClip[
       if (curr.summary && last.summary) {
         last.summary = `${last.summary} / ${curr.summary}`;
       }
+      const combined = [...(last.transcript ?? []), ...(curr.transcript ?? [])];
+      if (combined.length > 0) {
+        const seen = new Set<string>();
+        last.transcript = combined
+          .filter((t) => {
+            const key = `${t.start_s}:${t.end_s}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+          .sort((a, b) => a.start_s - b.start_s);
+      }
     } else {
       merged.push({ ...curr });
     }

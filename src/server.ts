@@ -298,6 +298,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && req.url === "/status") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ active_run_id: bus.getCurrentRunId() ?? null }));
+    return;
+  }
+
   if (req.method === "GET" && req.url === "/debug-ping") {
     bus.publish({ type: "error", message: "debug ping from /debug-ping" });
     res.writeHead(200, { "Content-Type": "application/json" });
