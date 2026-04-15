@@ -13,7 +13,9 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { makeOrchestratorAgent } from "./agents/orchestrator.js";
 import { bus, BusEvent } from "./lib/event-bus.js";
-import { killRun, clearCancelled } from "./tools/cli-tool.js";
+import { killRun, clearCancelled, isCancelled } from "./tools/cli-tool.js";
+
+const runCancelRejects = new Map<string, (err: Error) => void>();
 
 const OUT_DIR = path.resolve(new URL("../out", import.meta.url).pathname);
 fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -134,21 +136,26 @@ const server = http.createServer(async (req, res) => {
         bus.setCurrentRunId(run_id);
         clearCancelled(run_id);
         bus.publish({ type: "agent_start", run_id, prompt: body.prompt });
+        const cancelPromise = new Promise<never>((_, reject) => {
+          runCancelRejects.set(run_id, reject);
+        });
         try {
-          const result = await orchestrator.invoke(body.prompt!);
+          const result = await Promise.race([orchestrator.invoke(body.prompt!), cancelPromise]);
           const content =
             typeof result === "string"
               ? result
               : (result as { content?: string }).content ?? JSON.stringify(result);
           bus.publish({ type: "agent_end", run_id, content });
         } catch (e) {
-          bus.publish({
-            type: "error",
-            run_id,
-            message: e instanceof Error ? e.message : String(e),
-          });
-          bus.publish({ type: "agent_end", run_id, error: true });
+          const msg = e instanceof Error ? e.message : String(e);
+          if (isCancelled(run_id)) {
+            bus.publish({ type: "agent_end", run_id, error: true, cancelled: true });
+          } else {
+            bus.publish({ type: "error", run_id, message: msg });
+            bus.publish({ type: "agent_end", run_id, error: true });
+          }
         } finally {
+          runCancelRejects.delete(run_id);
           if (bus.getCurrentRunId() === run_id) bus.setCurrentRunId(undefined);
         }
       })();
@@ -247,6 +254,11 @@ const server = http.createServer(async (req, res) => {
       }
       const killed = killRun(runId);
       bus.publish({ type: "error", run_id: runId, message: `Run cancelled by user (killed ${killed} subprocess(es))` });
+      const rej = runCancelRejects.get(runId);
+      if (rej) {
+        rej(new Error("RUN_CANCELLED"));
+        runCancelRejects.delete(runId);
+      }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true, run_id: runId, killed }));
     } catch (e) {

@@ -6,6 +6,8 @@ export type BusEventType =
   | "tool_start"
   | "tool_end"
   | "tool_output_line"
+  | "subagent_start"
+  | "subagent_end"
   | "stdio"
   | "error";
 

@@ -158,6 +158,15 @@ export function App() {
                 >
                   {allCollapsed ? "expand all" : "collapse all"}
                 </button>
+                <button
+                  onClick={() => {
+                    setEvents([]);
+                    try { localStorage.removeItem(STORAGE_KEY); } catch { }
+                  }}
+                  className="rounded-md bg-neutral-800 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-700"
+                >
+                  clear
+                </button>
                 <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
                   <input
                     type="checkbox"
@@ -249,6 +258,8 @@ export function App() {
                     <ToolGroup key={g.id} group={g} />
                   ) : g.kind === "stdio" ? (
                     <StdioGroup key={g.id} group={g} />
+                  ) : g.kind === "subagent" ? (
+                    <SubagentGroup key={g.id} group={g} />
                   ) : (
                     <EventBlock key={g.ev.id} ev={g.ev} />
                   )
@@ -416,13 +427,15 @@ function renderInline(text: string): React.ReactNode {
 type Group =
   | { kind: "solo"; ev: AgentEvent }
   | { kind: "tool"; id: string; script: string; events: AgentEvent[]; closed: boolean }
+  | { kind: "subagent"; id: string; label: string; agent: string; events: AgentEvent[]; closed: boolean }
   | { kind: "stdio"; id: string; events: AgentEvent[] };
 
 function groupEvents(events: AgentEvent[]): Group[] {
   const groups: Group[] = [];
   const openByScript = new Map<string, Group & { kind: "tool" }>();
+  const openByLabel = new Map<string, Group & { kind: "subagent" }>();
   for (const ev of events) {
-    const d = (ev.data as { script?: string } | null) ?? null;
+    const d = (ev.data as { script?: string; label?: string; agent?: string } | null) ?? null;
     const script = d?.script;
     const isTool =
       script &&
@@ -438,6 +451,19 @@ function groupEvents(events: AgentEvent[]): Group[] {
       }
       g.events.push(ev);
       if (ev.type === "tool_end") g.closed = true;
+      continue;
+    }
+    if (ev.type === "subagent_start" || ev.type === "subagent_end") {
+      const label = d?.label ?? "(unknown)";
+      const agent = d?.agent ?? "";
+      let g = openByLabel.get(label);
+      if (!g || g.closed) {
+        g = { kind: "subagent", id: `sub-${label}-${ev.id}`, label, agent, events: [], closed: false };
+        openByLabel.set(label, g);
+        groups.push(g);
+      }
+      g.events.push(ev);
+      if (ev.type === "subagent_end") g.closed = true;
       continue;
     }
     if (ev.type === "stdio") {
@@ -546,6 +572,58 @@ function ToolGroup({ group }: { group: Extract<Group, { kind: "tool" }> }) {
         <pre className={`max-h-80 overflow-auto px-4 py-3 font-mono text-xs leading-relaxed text-neutral-300 ${wrapCls}`}>
           {lines.slice().reverse().map((l) => (l.data as { line?: string }).line ?? "").join("\n")}
         </pre>
+      )}
+    </li>
+  );
+}
+
+function SubagentGroup({ group }: { group: Extract<Group, { kind: "subagent" }> }) {
+  const collapse = useContext(CollapseContext);
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    setExpanded(!collapse.allCollapsed);
+  }, [collapse.tick]);
+  const start = group.events.find((e) => e.type === "subagent_start");
+  const end = group.events.find((e) => e.type === "subagent_end");
+  const endData = (end?.data as { duration_ms?: number; error?: string } | undefined) ?? {};
+  const duration = endData.duration_ms;
+  const err = endData.error;
+  const status = !group.closed ? "running" : err ? "error" : "done";
+  const statusColor =
+    status === "running"
+      ? "text-amber-400"
+      : status === "done"
+        ? "text-emerald-400"
+        : "text-red-400";
+  return (
+    <li className="overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center justify-between border-b border-neutral-800 px-4 py-2 hover:bg-neutral-800/50"
+      >
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="rounded bg-neutral-800 px-2 py-0.5 font-mono text-xs text-purple-300">
+            subagent
+          </span>
+          <span className="rounded bg-neutral-800/70 px-2 py-0.5 font-mono text-xs text-neutral-300">
+            {group.agent}
+          </span>
+          <span className="truncate rounded bg-neutral-800/50 px-2 py-0.5 font-mono text-xs text-neutral-400">
+            {group.label}
+          </span>
+          <span className={`font-mono text-xs ${statusColor}`}>{status}</span>
+          {duration !== undefined && (
+            <span className="font-mono text-xs text-neutral-500">
+              {(duration / 1000).toFixed(1)}s
+            </span>
+          )}
+        </div>
+        <span className="font-mono text-xs text-neutral-500">
+          {new Date(start?.at ?? group.events[0].at).toLocaleTimeString()} {expanded ? "▾" : "▸"}
+        </span>
+      </button>
+      {expanded && err && (
+        <div className="px-4 py-2 font-mono text-xs text-red-300">{err}</div>
       )}
     </li>
   );
