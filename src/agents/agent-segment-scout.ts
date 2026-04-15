@@ -25,6 +25,7 @@ Procedure:
    - count=1
    - a concise free-form 'topic' string that nudges toward that moment (e.g. "the Godot crash")
    - maxSeconds if the invocation mentioned a ceiling
+   - userPrompt=<the top-level USER PROMPT, verbatim> if the invocation surfaces one
    - output=<a unique .segment.json path next to the transcript, e.g. <base>.<slug>.segment.json>
 5. If a call returns a DISCARDED line, drop that candidate and try a replacement if you still have unused ideas.
 6. Return ONLY the list of saved .segment.json paths, one per line, as your final answer.

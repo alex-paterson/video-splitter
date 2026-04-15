@@ -81,7 +81,9 @@ export async function streamAgentWithReasoning(
         const text = cb.text ?? "";
         if (text) {
           flush();
+          lastEmittedChar = text.slice(-1);
           bus.publish({ type: "subagent_reasoning", agent: agentId, label, text });
+          emitSeparator();
         }
       }
     } else if (ev?.type === "beforeToolCallEvent" && ev.toolUse) {
@@ -218,27 +220,31 @@ export function makeTopicScoutManyTool(makeAgent: () => Agent) {
       transcripts: z.array(z.string()).min(1),
       countPerTranscript: z.number().min(1),
       maxSeconds: z.number().optional(),
+      userPrompt: z.string().optional().describe("Original top-level user request; forwarded to each scout so downstream LLM calls see the broader intent."),
       concurrency: z.number().optional().describe("Max concurrent scouts. Default 4."),
     }),
     callback: async ({
       transcripts,
       countPerTranscript,
       maxSeconds,
+      userPrompt,
       concurrency,
     }: {
       transcripts: string[];
       countPerTranscript: number;
       maxSeconds?: number;
+      userPrompt?: string;
       concurrency?: number;
     }, ctx?: ToolCtx) => {
       const sig = getCancelSignal(ctx);
       const cap = Math.max(1, Math.min(concurrency ?? 4, 8));
       const maxHint = maxSeconds !== undefined ? ` maxSeconds=${maxSeconds}` : "";
+      const userHint = userPrompt ? `\nUSER PROMPT (forward verbatim as userPrompt to transcript_to_topic for every topic): """${userPrompt}"""` : "";
       const runs = await pool(transcripts, cap, (t, i) =>
         invokeSubagent(
           makeAgent(),
           `topic_scout[${i + 1}/${transcripts.length}] ${t}`,
-          `Scout ${countPerTranscript} topic(s) from this transcript: ${t}${maxHint}`,
+          `Scout ${countPerTranscript} topic(s) from this transcript: ${t}${maxHint}${userHint}`,
           sig,
         )
       );
@@ -271,27 +277,31 @@ export function makeSegmentScoutManyTool(makeAgent: () => Agent) {
       transcripts: z.array(z.string()).min(1),
       countPerTranscript: z.number().min(1),
       maxSeconds: z.number().optional(),
+      userPrompt: z.string().optional().describe("Original top-level user request; forwarded to each scout."),
       concurrency: z.number().optional().describe("Max concurrent scouts. Default 4."),
     }),
     callback: async ({
       transcripts,
       countPerTranscript,
       maxSeconds,
+      userPrompt,
       concurrency,
     }: {
       transcripts: string[];
       countPerTranscript: number;
       maxSeconds?: number;
+      userPrompt?: string;
       concurrency?: number;
     }, ctx?: ToolCtx) => {
       const sig = getCancelSignal(ctx);
       const cap = Math.max(1, Math.min(concurrency ?? 4, 8));
       const maxHint = maxSeconds !== undefined ? ` maxSeconds=${maxSeconds}` : "";
+      const userHint = userPrompt ? `\nUSER PROMPT (forward verbatim as userPrompt to transcript_find_segment for every segment): """${userPrompt}"""` : "";
       const runs = await pool(transcripts, cap, (t, i) =>
         invokeSubagent(
           makeAgent(),
           `segment_scout[${i + 1}/${transcripts.length}] ${t}`,
-          `Scout ${countPerTranscript} segment(s) from this transcript: ${t}${maxHint}`,
+          `Scout ${countPerTranscript} segment(s) from this transcript: ${t}${maxHint}${userHint}`,
           sig,
         )
       );
@@ -392,6 +402,10 @@ export function makePlanAndRenderManyTool(makeAgent: () => Agent) {
         .boolean()
         .optional()
         .describe("If true, generate and overlay a centered banner PNG. Default false."),
+      userPrompt: z
+        .string()
+        .optional()
+        .describe("Original top-level user request; forwarded to each creator so topic_to_compilation / compilation_refine see the broader intent."),
     }),
     callback: async ({
       topics,
@@ -400,6 +414,7 @@ export function makePlanAndRenderManyTool(makeAgent: () => Agent) {
       bleep,
       bleepWords,
       banner,
+      userPrompt,
     }: {
       topics: string[];
       keepSilence?: boolean;
@@ -407,6 +422,7 @@ export function makePlanAndRenderManyTool(makeAgent: () => Agent) {
       bleep?: boolean;
       bleepWords?: string;
       banner?: boolean;
+      userPrompt?: string;
     }, ctx?: ToolCtx) => {
       const sig = getCancelSignal(ctx);
       const silenceHint = keepSilence
@@ -422,11 +438,14 @@ export function makePlanAndRenderManyTool(makeAgent: () => Agent) {
       const bannerHint = banner
         ? "\nBANNER: REQUIRED. Run topic_to_banner and pass banner=<png> to compilation_render. Verify the render's stderr shows 'Banner: <path>' (not '(none)')."
         : "";
+      const userHint = userPrompt
+        ? `\nUSER PROMPT (forward verbatim as userPrompt to topic_to_compilation and any compilation_refine calls): """${userPrompt}"""`
+        : "";
       const runs = await pool(topics, 4, (topicPath, i) =>
         invokeSubagent(
           makeAgent(),
           `compilation[${i + 1}/${topics.length}] ${topicPath}`,
-          `Produce the final MP4 for this topic: ${topicPath}${silenceHint}${maxHint}${bleepHint}${bannerHint}`,
+          `Produce the final MP4 for this topic: ${topicPath}${silenceHint}${maxHint}${bleepHint}${bannerHint}${userHint}`,
           sig,
         )
       );
@@ -466,6 +485,7 @@ export function makePlanAndRenderSegmentsTool(makeAgent: () => Agent) {
       bleep: z.boolean().optional(),
       bleepWords: z.string().optional(),
       banner: z.boolean().optional(),
+      userPrompt: z.string().optional().describe("Original top-level user request; forwarded to each creator."),
     }),
     callback: async ({
       segments,
@@ -474,6 +494,7 @@ export function makePlanAndRenderSegmentsTool(makeAgent: () => Agent) {
       bleep,
       bleepWords,
       banner,
+      userPrompt,
     }: {
       segments: string[];
       keepSilence?: boolean;
@@ -481,6 +502,7 @@ export function makePlanAndRenderSegmentsTool(makeAgent: () => Agent) {
       bleep?: boolean;
       bleepWords?: string;
       banner?: boolean;
+      userPrompt?: string;
     }, ctx?: ToolCtx) => {
       const sig = getCancelSignal(ctx);
       const silenceHint = keepSilence
@@ -496,11 +518,14 @@ export function makePlanAndRenderSegmentsTool(makeAgent: () => Agent) {
       const bannerHint = banner
         ? "\nBANNER: REQUIRED. Run topic_to_banner and pass banner=<png> to segment_render. Verify the render's stderr shows 'Banner: <path>' (not '(none)')."
         : "";
+      const userHint = userPrompt
+        ? `\nUSER PROMPT (top-level user request that motivated this segment): """${userPrompt}"""`
+        : "";
       const runs = await pool(segments, 4, (segmentPath, i) =>
         invokeSubagent(
           makeAgent(),
           `segment[${i + 1}/${segments.length}] ${segmentPath}`,
-          `Produce the final MP4 for this segment: ${segmentPath}${silenceHint}${maxHint}${bleepHint}${bannerHint}`,
+          `Produce the final MP4 for this segment: ${segmentPath}${silenceHint}${maxHint}${bleepHint}${bannerHint}${userHint}`,
           sig,
         )
       );

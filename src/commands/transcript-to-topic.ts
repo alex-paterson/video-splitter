@@ -29,6 +29,7 @@ program
   .option("--topic <text>", "Topic to derive a story for (required)")
   .option("--output <path>", "Output .topic.json path")
   .option("--max-seconds <n>", "Maximum allowed duration for the resulting compilation (hint to LLM; not validated here)")
+  .option("--user-prompt <text>", "Original user request this work serves — passed verbatim to the LLM as context so it understands the broader intent, not just --topic")
   .option("--model <model>", "Claude model to use", "claude-opus-4-6");
 
 if (process.argv.length <= 2) { program.outputHelp(); process.exit(0); }
@@ -38,6 +39,7 @@ const opts = program.opts<{
   topic?: string;
   output?: string;
   maxSeconds?: string;
+  userPrompt?: string;
   model: string;
 }>();
 
@@ -66,15 +68,19 @@ async function deriveStory(
   topic: string,
   model: string,
   client: Anthropic,
-  maxSeconds?: number
+  maxSeconds?: number,
+  userPrompt?: string
 ): Promise<string> {
   const transcriptText = buildTranscriptText(transcript.segments);
   const maxLine = maxSeconds !== undefined
     ? `\n\nHARD CEILING: the final compilation derived from this story MUST NOT EXCEED ${maxSeconds} seconds total. Keep the story focused and tight enough that aggressive filtering of the transcript to this story will produce a compilation under that ceiling. If the topic cannot be told in under ${maxSeconds}s, narrow it sharply.`
     : "";
+  const userContextLine = userPrompt
+    ? `\n\nUSER REQUEST CONTEXT (the broader ask this work is serving; use it to inform tone, framing, and what to emphasise):\n"""${userPrompt}"""`
+    : "";
   const prompt = `You are analyzing a video transcript to extract the narrative of a specific topic.
 
-Topic: "${topic}"${maxLine}
+Topic: "${topic}"${maxLine}${userContextLine}
 
 Read the transcript and write a concise story document (a few sentences to paragraphs) that captures:
 - The narrative arc: how the topic unfolds from beginning to end
@@ -124,7 +130,7 @@ async function main() {
 
   const client = new Anthropic({ apiKey });
   const maxSeconds = opts.maxSeconds !== undefined ? parseFloat(opts.maxSeconds) : undefined;
-  const story = await deriveStory(transcript, opts.topic, opts.model, client, maxSeconds);
+  const story = await deriveStory(transcript, opts.topic, opts.model, client, maxSeconds, opts.userPrompt);
   process.stderr.write(`\nStory:\n${story}\n\n`);
 
   const base = path.basename(transcriptPath).replace(/\.transcript\.json$/, "");

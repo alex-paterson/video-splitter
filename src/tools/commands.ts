@@ -82,6 +82,7 @@ export const transcriptToTopic = cliTool({
     transcript: z.string().describe("Path to .transcript.json"),
     topic: z.string().describe("Free-form topic/theme to derive a story for (required)"),
     maxSeconds: z.number().optional().describe("Maximum allowed total duration for the resulting compilation"),
+    userPrompt: z.string().optional().describe("Original user request this work serves — forwarded to the LLM as context so it understands the broader intent."),
     output: z.string().optional(),
   }),
 });
@@ -97,6 +98,7 @@ export const topicToCompilation = cliTool({
     transcript: z.string().optional(),
     source: z.string().optional(),
     maxSeconds: z.number().optional().describe("Soft ceiling hinted to the LLM. If exceeded, stderr reports OVER_MAX — call compilation_refine to iterate."),
+    userPrompt: z.string().optional().describe("Original user request this work serves — forwarded to the LLM as context."),
     output: z.string().optional(),
   }),
 });
@@ -130,6 +132,7 @@ export const compilationRefine = cliTool({
     compilation: z.string().describe("Path to any .compilation[.N].json"),
     maxSeconds: z.number().optional().describe("Hard ceiling in seconds (optional if instruction is provided)"),
     instruction: z.string().optional().describe("Free-text modification directive, e.g. 'drop the clip where the speaker talks about X'"),
+    userPrompt: z.string().optional().describe("Original user request this work serves — forwarded to the LLM as context."),
     output: z.string().optional(),
   }),
 });
@@ -165,6 +168,7 @@ export const transcriptFindSegment = cliTool({
     speaker: z.string().optional(),
     count: z.number().optional(),
     maxSeconds: z.number().optional().describe("Maximum allowed segment duration; discarded if exceeded"),
+    userPrompt: z.string().optional().describe("Original user request this work serves — forwarded to the LLM as context."),
     output: z.string().optional(),
   }),
 });

@@ -39,6 +39,7 @@ program
     "0.5"
   )
   .option("--max-seconds <n>", "Maximum allowed total clip duration; discard plan if exceeded")
+  .option("--user-prompt <text>", "Original user request this work serves — passed verbatim to the LLM as context")
   .option("--model <model>", "Claude model to use", "claude-opus-4-6");
 
 if (process.argv.length <= 2) { program.outputHelp(); process.exit(0); }
@@ -50,6 +51,7 @@ const opts = program.opts<{
   output?: string;
   mergeGap: string;
   maxSeconds?: string;
+  userPrompt?: string;
   model: string;
 }>();
 
@@ -84,15 +86,19 @@ async function filterByStory(
   story: string,
   model: string,
   client: Anthropic,
-  maxSeconds?: number
+  maxSeconds?: number,
+  userPrompt?: string
 ): Promise<CompilationClip[]> {
   const transcriptText = buildTranscriptText(transcript.segments);
   const maxLine = maxSeconds !== undefined
     ? `\n\nHARD CEILING: the sum of kept clip durations MUST NOT EXCEED ${maxSeconds} seconds total. Cut aggressively. If you can't fit under the ceiling, keep only the most essential beats.`
     : "";
+  const userContextLine = userPrompt
+    ? `\n\nUSER REQUEST CONTEXT (the broader ask this work is serving; let it inform what to emphasise or trim):\n"""${userPrompt}"""`
+    : "";
   const prompt = `You are a video editor making an aggressive cut of a transcript to tell a specific story.
 
-Topic: "${topic}"${maxLine}
+Topic: "${topic}"${maxLine}${userContextLine}
 
 STORY TO TELL:
 ${story}
@@ -216,7 +222,7 @@ async function main() {
 
   const client = new Anthropic({ apiKey });
   const maxSeconds = opts.maxSeconds !== undefined ? parseFloat(opts.maxSeconds) : undefined;
-  const rawClips = await filterByStory(transcript, topic.topic, topic.story, opts.model, client, maxSeconds);
+  const rawClips = await filterByStory(transcript, topic.topic, topic.story, opts.model, client, maxSeconds, opts.userPrompt);
 
   const clips = mergeClips(rawClips, mergeGap);
   const totalDuration = clips.reduce((s, c) => s + c.end_s - c.start_s, 0);

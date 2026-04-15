@@ -31,6 +31,7 @@ program
   .option("--max-seconds <n>", "Maximum total duration (seconds)")
   .option("--instruction <text>", "Free-text modification instruction (e.g. 'drop the clip about X')")
   .option("--output <path>", "Explicit output path (default: auto-increment)")
+  .option("--user-prompt <text>", "Original user request this work serves — passed verbatim to the LLM as context")
   .option("--model <model>", "Claude model", "claude-opus-4-6");
 
 if (process.argv.length <= 2) { program.outputHelp(); process.exit(0); }
@@ -40,6 +41,7 @@ const opts = program.opts<{
   maxSeconds?: string;
   instruction?: string;
   output?: string;
+  userPrompt?: string;
   model: string;
 }>();
 const [inputArg] = program.args;
@@ -81,7 +83,8 @@ async function refine(
   maxSeconds: number | undefined,
   instruction: string | undefined,
   model: string,
-  client: Anthropic
+  client: Anthropic,
+  userPrompt?: string
 ): Promise<CompilationClip[]> {
   const current = totalOf(clips);
   const clipsText = clips
@@ -107,10 +110,13 @@ async function refine(
     throw new Error("refine(): need either instruction or maxSeconds");
   }
 
+  const userContextLine = userPrompt
+    ? `\nUSER REQUEST CONTEXT (the broader ask this work is serving):\n"""${userPrompt}"""\n`
+    : "";
   const prompt = `You are modifying an existing video compilation.
 
 Topic: "${topic}"
-${story ? `Story arc:\n${story}\n` : ""}
+${story ? `Story arc:\n${story}\n` : ""}${userContextLine}
 
 ${goalLines.join("\n")}
 
@@ -134,7 +140,17 @@ Return ONLY a JSON array:
   const text = response.content[0].type === "text" ? response.content[0].text : "";
   const match = text.match(/\[[\s\S]*\]/);
   if (!match) throw new Error(`Could not parse refine output:\n${text}`);
-  const refined = RefinedArraySchema.parse(JSON.parse(match[0]));
+  let refined;
+  try {
+    refined = RefinedArraySchema.parse(JSON.parse(match[0]));
+  } catch (e) {
+    process.stderr.write(`\n--- refine parse failed ---\n`);
+    process.stderr.write(`content blocks: ${JSON.stringify(response.content.map((c) => c.type))}\n`);
+    process.stderr.write(`raw text (${text.length} chars):\n${text}\n`);
+    process.stderr.write(`matched (${match[0].length} chars):\n${match[0]}\n`);
+    process.stderr.write(`--- end refine parse failed ---\n`);
+    throw e;
+  }
 
   // Preserve transcript excerpts by intersecting the refined range against
   // every source clip's transcript segments — works even when the LLM shifts
@@ -180,7 +196,7 @@ async function main() {
   }
 
   const client = new Anthropic({ apiKey });
-  const refined = await refine(comp.clips, comp.story, comp.topic, maxSeconds, instruction, opts.model, client);
+  const refined = await refine(comp.clips, comp.story, comp.topic, maxSeconds, instruction, opts.model, client, opts.userPrompt);
   const newTotal = totalOf(refined);
 
   const outputPath = path.resolve(opts.output ?? nextVersionPath(inputPath));

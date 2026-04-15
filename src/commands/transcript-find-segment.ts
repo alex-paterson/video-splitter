@@ -28,6 +28,7 @@ program
   .option("--min-speakers <n>", "Minimum number of speakers that must appear", "1")
   .option("--count <n>", "Number of candidate segments to return", "1")
   .option("--max-seconds <n>", "Maximum allowed segment duration; discard if exceeded")
+  .option("--user-prompt <text>", "Original user request this work serves — passed verbatim to the LLM as context")
   .option("--output <path>", "Write .segment.json to this path (default: stdout)")
   .option("--model <model>", "Claude model to use", "claude-opus-4-6");
 
@@ -42,6 +43,7 @@ const opts = program.opts<{
   minSpeakers: string;
   count: string;
   maxSeconds?: string;
+  userPrompt?: string;
   output?: string;
   model: string;
 }>();
@@ -73,6 +75,7 @@ function buildPrompt(transcript: Transcript, opts: {
   minSpeakers: number;
   count: number;
   maxSeconds?: number;
+  userPrompt?: string;
 }): string {
   const transcriptText = buildTranscriptText(transcript.segments);
   const topicLine = opts.topic ? `\nFocus topic/theme: "${opts.topic}"` : "";
@@ -83,10 +86,13 @@ function buildPrompt(transcript: Transcript, opts: {
   const maxLine = opts.maxSeconds !== undefined
     ? `\nHARD CEILING: segment duration MUST NOT exceed ${opts.maxSeconds} seconds. If no self-contained segment fits, pick the tightest available.`
     : "";
+  const userContextLine = opts.userPrompt
+    ? `\n\nUSER REQUEST CONTEXT (the broader ask this work is serving; let it inform which moments to prioritise):\n"""${opts.userPrompt}"""`
+    : "";
 
   return `You are a video editor analyzing a speaker-diarized transcript. Your task is to identify ${opts.count > 1 ? `${opts.count} candidate segments` : "one segment"} that would make excellent standalone video clips.
 
-Target duration: ${opts.targetDuration}s ± ${opts.tolerance}s (acceptable range: ${opts.targetDuration - opts.tolerance}s – ${opts.targetDuration + opts.tolerance}s)${topicLine}${speakerLine}${minSpeakerLine}${maxLine}
+Target duration: ${opts.targetDuration}s ± ${opts.tolerance}s (acceptable range: ${opts.targetDuration - opts.tolerance}s – ${opts.targetDuration + opts.tolerance}s)${topicLine}${speakerLine}${minSpeakerLine}${maxLine}${userContextLine}
 
 SELECTION CRITERIA (in order of importance):
 1. The segment must be self-contained — a viewer with no prior context should understand it fully.
@@ -196,6 +202,7 @@ async function main() {
     minSpeakers: parseInt(opts.minSpeakers),
     count,
     maxSeconds,
+    userPrompt: opts.userPrompt,
   });
 
   process.stderr.write(`Calling ${opts.model}…\n`);

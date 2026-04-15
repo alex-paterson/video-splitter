@@ -1,10 +1,13 @@
-import { OpenAIModel } from "@strands-agents/sdk/models/openai";
+import { AnthropicModel } from "@strands-agents/sdk/models/anthropic";
 
 export function buildModel() {
-  return new OpenAIModel({
-    // Not supported for chat
-    // params: { reasoning_effort: "medium" }, // "minimal" | "low" |  "medium" | "high"
-    api: "chat"
+  return new AnthropicModel({
+    modelId: "claude-sonnet-4-6",
+    // modelId: "claude-opus-4-6",
+    maxTokens: 16384,
+    params: {
+      thinking: { type: "enabled", budget_tokens: 4000 },
+    },
   });
 }
 

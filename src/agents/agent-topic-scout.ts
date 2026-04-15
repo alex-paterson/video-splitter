@@ -20,7 +20,7 @@ Procedure:
 1. read_file the transcript (or a representative portion — it can be large; cap with maxBytes if needed).
 2. Brainstorm at least 2*N candidate topics covering different moments / themes / bits in the recording. De-duplicate near-matches and drop any that rely on context the viewer won't have.
 3. Pick the N most promising distinct topics.
-4. For each chosen topic, call transcript_to_topic with the transcript path and a concise free-form 'topic' string (a short phrase, e.g. "Godot crashes and technical misadventures").
+4. For each chosen topic, call transcript_to_topic with the transcript path and a concise free-form 'topic' string (a short phrase, e.g. "Godot crashes and technical misadventures"). If the invocation surfaces a USER PROMPT, forward it verbatim as the userPrompt argument so the story-derivation step sees the broader intent.
 5. Collect the saved .topic.json paths from each tool's output.
 6. Return ONLY the list of .topic.json paths, one per line, as your final answer.
 `.trim(),
