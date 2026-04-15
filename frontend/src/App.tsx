@@ -9,16 +9,14 @@ type AgentEvent = {
 
 let fallbackCounter = 0;
 
-const WrapContext = createContext(true);
-const useWrapClass = () =>
-  useContext(WrapContext) ? "whitespace-pre-wrap break-words" : "whitespace-pre overflow-x-auto";
+const useWrapClass = () => "whitespace-pre-wrap break-words";
 
 const CollapseContext = createContext<{ allCollapsed: boolean; tick: number }>({
   allCollapsed: false,
   tick: 0,
 });
 
-const ThinkingContext = createContext(false);
+const DefaultCollapsedContext = createContext(false);
 
 type OutFile = { name: string; size: number; created_ms: number };
 
@@ -43,19 +41,18 @@ export function App() {
   const [running, setRunning] = useState(false);
   const [lastRunId, setLastRunId] = useState<string | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
-  const [wrap, setWrap] = useState(true);
   const [hideStdio, setHideStdio] = useState(() => {
     try { const v = localStorage.getItem("agent-stream-hide-stdio-v1"); return v === null ? true : v === "1"; } catch { return true; }
   });
   useEffect(() => {
     try { localStorage.setItem("agent-stream-hide-stdio-v1", hideStdio ? "1" : "0"); } catch { }
   }, [hideStdio]);
-  const [thinking, setThinking] = useState(() => {
-    try { const v = localStorage.getItem("agent-stream-thinking-v1"); return v === null ? true : v === "1"; } catch { return true; }
+  const [defaultCollapsed, setDefaultCollapsed] = useState(() => {
+    try { return localStorage.getItem("agent-stream-default-collapsed-v1") === "1"; } catch { return false; }
   });
   useEffect(() => {
-    try { localStorage.setItem("agent-stream-thinking-v1", thinking ? "1" : "0"); } catch { }
-  }, [thinking]);
+    try { localStorage.setItem("agent-stream-default-collapsed-v1", defaultCollapsed ? "1" : "0"); } catch { }
+  }, [defaultCollapsed]);
   const [filterLanguage, setFilterLanguage] = useState(true);
   const [safeForWork, setSafeForWork] = useState(true);
   const [allCollapsed, setAllCollapsed] = useState(false);
@@ -159,12 +156,11 @@ export function App() {
   }, []);
 
   return (
-    <WrapContext.Provider value={wrap}>
-      <ThinkingContext.Provider value={thinking}>
+    <DefaultCollapsedContext.Provider value={defaultCollapsed}>
         <CollapseContext.Provider value={{ allCollapsed, tick: collapseTick }}>
           <div className="min-h-screen bg-neutral-950 text-neutral-100">
             <header className="sticky top-0 z-10 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur">
-              <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
+              <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
                 <h1 className="text-lg font-semibold tracking-tight">Content Machine</h1>
                 <div className="flex items-center gap-4">
                   <button
@@ -187,9 +183,9 @@ export function App() {
               </div>
             </header>
 
-            <main className="mx-auto max-w-3xl px-6 py-6">
-              <FilesPanel />
-              <div className="mb-6 rounded-lg border border-neutral-800 bg-neutral-900 p-3">
+            <main className="mx-auto grid max-w-7xl grid-cols-1 gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+              <aside className="flex flex-col gap-6 lg:sticky lg:top-16 lg:self-start">
+              <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-3">
                 <textarea
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
@@ -206,33 +202,13 @@ export function App() {
   "90s highlight reel from foo.mkv, no swearing"
   "find the segment where we talk about auth and render it"
   "what's in foo.mkv? list the main topics"`}
-                  rows={8}
+                  rows={14}
                   className="w-full resize-y rounded-md bg-neutral-950 px-3 py-2 font-mono text-sm text-neutral-100 outline-none ring-1 ring-neutral-800 focus:ring-emerald-600"
                 />
                 <div className="mt-2 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
-                      <input
-                        type="checkbox"
-                        checked={filterLanguage}
-                        onChange={(e) => setFilterLanguage(e.target.checked)}
-                        className="h-3 w-3 accent-emerald-600"
-                      />
-                      Bleep Curse Words
-                    </label>
-                    <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
-                      <input
-                        type="checkbox"
-                        checked={safeForWork}
-                        onChange={(e) => setSafeForWork(e.target.checked)}
-                        className="h-3 w-3 accent-emerald-600"
-                      />
-                      Safe for Work
-                    </label>
-                    <span className="font-mono text-xs text-neutral-500">
-                      {lastRunId ? `last run_id: ${lastRunId}` : "⌘/Ctrl+Enter to run"}
-                    </span>
-                  </div>
+                  <span className="font-mono text-xs text-neutral-500">
+                    {lastRunId ? `last run_id: ${lastRunId}` : "⌘/Ctrl+Enter to run"}
+                  </span>
                   <div className="flex items-center gap-2">
                     {activeRunId ? (
                       <button
@@ -253,6 +229,19 @@ export function App() {
                   </div>
                 </div>
               </div>
+              <FilesPanel />
+              <AdvancedSettings
+                hideStdio={hideStdio}
+                setHideStdio={setHideStdio}
+                defaultCollapsed={defaultCollapsed}
+                setDefaultCollapsed={setDefaultCollapsed}
+                filterLanguage={filterLanguage}
+                setFilterLanguage={setFilterLanguage}
+                safeForWork={safeForWork}
+                setSafeForWork={setSafeForWork}
+              />
+              </aside>
+              <section className="flex flex-col gap-6">
               {events.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-neutral-800 p-10 text-center text-sm text-neutral-500">
                   No events yet. Submit a prompt above to start.
@@ -276,19 +265,11 @@ export function App() {
                     )}
                 </ol>
               )}
-              <AdvancedSettings
-                wrap={wrap}
-                setWrap={setWrap}
-                hideStdio={hideStdio}
-                setHideStdio={setHideStdio}
-                thinking={thinking}
-                setThinking={setThinking}
-              />
+              </section>
             </main>
           </div>
         </CollapseContext.Provider>
-      </ThinkingContext.Provider>
-    </WrapContext.Provider>
+        </DefaultCollapsedContext.Provider>
   );
 }
 
@@ -297,8 +278,9 @@ function EventBlock({ ev }: { ev: AgentEvent }) {
   const runId = typeof d.run_id === "string" ? d.run_id : undefined;
   const ts = typeof d.ts === "number" ? d.ts : ev.at;
   const collapse = useContext(CollapseContext);
+  const defaultCollapsed = useContext(DefaultCollapsedContext);
   const collapsible = ev.type === "agent_start" || ev.type === "agent_end";
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(!defaultCollapsed);
   useEffect(() => {
     setExpanded(!collapse.allCollapsed);
   }, [collapse.tick]);
@@ -321,6 +303,9 @@ function EventBlock({ ev }: { ev: AgentEvent }) {
           }`}
       >
         <div className="flex items-center gap-2">
+          {collapsible && (
+            <span className="font-mono text-xs text-neutral-500">{expanded ? "▾" : "▸"}</span>
+          )}
           <span className={`rounded bg-neutral-800 px-2 py-0.5 font-mono text-xs ${typeColor}`}>
             {ev.type}
           </span>
@@ -335,7 +320,6 @@ function EventBlock({ ev }: { ev: AgentEvent }) {
         </div>
         <span className="font-mono text-xs text-neutral-500" title={new Date(ts).toISOString()}>
           {new Date(ts).toLocaleTimeString()}
-          {collapsible ? ` ${expanded ? "▾" : "▸"}` : ""}
         </span>
       </HeaderTag>
       {(!collapsible || expanded) && <EventBody type={ev.type} data={ev.data} />}
@@ -519,7 +503,8 @@ function groupEvents(events: AgentEvent[]): Group[] {
 
 function StdioGroup({ group }: { group: Extract<Group, { kind: "stdio" }> }) {
   const collapse = useContext(CollapseContext);
-  const [expanded, setExpanded] = useState(true);
+  const defaultCollapsed = useContext(DefaultCollapsedContext);
+  const [expanded, setExpanded] = useState(!defaultCollapsed);
   useEffect(() => {
     setExpanded(!collapse.allCollapsed);
   }, [collapse.tick]);
@@ -533,6 +518,7 @@ function StdioGroup({ group }: { group: Extract<Group, { kind: "stdio" }> }) {
         className="flex w-full items-center justify-between border-b border-neutral-800 px-4 py-2 hover:bg-neutral-800/50"
       >
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="font-mono text-xs text-neutral-500">{expanded ? "▾" : "▸"}</span>
           <span className="rounded bg-neutral-800 px-2 py-0.5 font-mono text-xs text-neutral-400">
             stdio
           </span>
@@ -542,7 +528,7 @@ function StdioGroup({ group }: { group: Extract<Group, { kind: "stdio" }> }) {
         </div>
         <span className="font-mono text-xs text-neutral-500">
           {new Date(first.at).toLocaleTimeString()}
-          {last !== first ? `–${new Date(last.at).toLocaleTimeString()}` : ""} {expanded ? "▾" : "▸"}
+          {last !== first ? `–${new Date(last.at).toLocaleTimeString()}` : ""}
         </span>
       </button>
       {expanded && (
@@ -564,7 +550,8 @@ function StdioGroup({ group }: { group: Extract<Group, { kind: "stdio" }> }) {
 
 function ToolGroup({ group }: { group: Extract<Group, { kind: "tool" }> }) {
   const collapse = useContext(CollapseContext);
-  const [expanded, setExpanded] = useState(!group.closed);
+  const defaultCollapsed = useContext(DefaultCollapsedContext);
+  const [expanded, setExpanded] = useState(!defaultCollapsed);
   useEffect(() => {
     setExpanded(!collapse.allCollapsed);
   }, [collapse.tick]);
@@ -592,6 +579,7 @@ function ToolGroup({ group }: { group: Extract<Group, { kind: "tool" }> }) {
         className="flex w-full items-center justify-between border-b border-neutral-800 px-4 py-2 hover:bg-neutral-800/50"
       >
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="font-mono text-xs text-neutral-500">{expanded ? "▾" : "▸"}</span>
           <span className="rounded bg-neutral-800 px-2 py-0.5 font-mono text-xs text-sky-400">
             {group.script}
           </span>
@@ -602,7 +590,7 @@ function ToolGroup({ group }: { group: Extract<Group, { kind: "tool" }> }) {
           </span>
         </div>
         <span className="font-mono text-xs text-neutral-500">
-          {new Date(start?.at ?? group.events[0].at).toLocaleTimeString()} {expanded ? "▾" : "▸"}
+          {new Date(start?.at ?? group.events[0].at).toLocaleTimeString()}
         </span>
       </button>
       {expanded && (
@@ -616,9 +604,9 @@ function ToolGroup({ group }: { group: Extract<Group, { kind: "tool" }> }) {
 
 function SubagentGroup({ group }: { group: Extract<Group, { kind: "subagent" }> }) {
   const collapse = useContext(CollapseContext);
-  const thinking = useContext(ThinkingContext);
+  const defaultCollapsed = useContext(DefaultCollapsedContext);
   const wrapCls = useWrapClass();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(!defaultCollapsed);
   useEffect(() => {
     setExpanded(!collapse.allCollapsed);
   }, [collapse.tick]);
@@ -665,6 +653,7 @@ function SubagentGroup({ group }: { group: Extract<Group, { kind: "subagent" }> 
         className="flex w-full items-center justify-between border-b border-neutral-800 px-4 py-2 hover:bg-neutral-800/50"
       >
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="font-mono text-xs text-neutral-500">{expanded ? "▾" : "▸"}</span>
           <span className="rounded bg-neutral-800 px-2 py-0.5 font-mono text-xs text-purple-300">
             subagent
           </span>
@@ -682,10 +671,10 @@ function SubagentGroup({ group }: { group: Extract<Group, { kind: "subagent" }> 
           )}
         </div>
         <span className="font-mono text-xs text-neutral-500">
-          {new Date(start?.at ?? group.events[0].at).toLocaleTimeString()} {expanded ? "▾" : "▸"}
+          {new Date(start?.at ?? group.events[0].at).toLocaleTimeString()}
         </span>
       </button>
-      {expanded && thinking && reasoning && (
+      {expanded && reasoning && (
         <ReasoningPane text={reasoning} wrapCls={wrapCls} />
       )}
       {expanded && toolCalls.length > 0 && (
@@ -703,59 +692,51 @@ function SubagentGroup({ group }: { group: Extract<Group, { kind: "subagent" }> 
 }
 
 function AdvancedSettings({
-  wrap,
-  setWrap,
   hideStdio,
   setHideStdio,
-  thinking,
-  setThinking,
+  defaultCollapsed,
+  setDefaultCollapsed,
+  filterLanguage,
+  setFilterLanguage,
+  safeForWork,
+  setSafeForWork,
 }: {
-  wrap: boolean;
-  setWrap: (v: boolean) => void;
   hideStdio: boolean;
   setHideStdio: (v: boolean) => void;
-  thinking: boolean;
-  setThinking: (v: boolean) => void;
+  defaultCollapsed: boolean;
+  setDefaultCollapsed: (v: boolean) => void;
+  filterLanguage: boolean;
+  setFilterLanguage: (v: boolean) => void;
+  safeForWork: boolean;
+  setSafeForWork: (v: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
+  const item = (checked: boolean, onChange: (v: boolean) => void, label: string) => (
+    <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-3 w-3 accent-emerald-600"
+      />
+      {label}
+    </label>
+  );
   return (
-    <div className="mt-8 overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
+    <div className="overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between px-4 py-2 hover:bg-neutral-800/50"
+        className="flex w-full items-center gap-2 px-4 py-2 hover:bg-neutral-800/50"
       >
-        <span className="text-sm font-medium text-neutral-300">Advanced Settings</span>
         <span className="font-mono text-xs text-neutral-500">{open ? "▾" : "▸"}</span>
+        <span className="text-sm font-medium text-neutral-300">Settings</span>
       </button>
       {open && (
         <div className="flex flex-col gap-2 border-t border-neutral-800 px-4 py-3">
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
-            <input
-              type="checkbox"
-              checked={thinking}
-              onChange={(e) => setThinking(e.target.checked)}
-              className="h-3 w-3 accent-emerald-600"
-            />
-            Show Agent Thinking
-          </label>
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
-            <input
-              type="checkbox"
-              checked={wrap}
-              onChange={(e) => setWrap(e.target.checked)}
-              className="h-3 w-3 accent-emerald-600"
-            />
-            Wrap Long Lines
-          </label>
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
-            <input
-              type="checkbox"
-              checked={hideStdio}
-              onChange={(e) => setHideStdio(e.target.checked)}
-              className="h-3 w-3 accent-emerald-600"
-            />
-            Hide Stdio Blocks
-          </label>
+          {item(filterLanguage, setFilterLanguage, "Bleep curse words")}
+          {item(safeForWork, setSafeForWork, "Safe for work")}
+          {item(hideStdio, setHideStdio, "Hide stdio blocks")}
+          {item(defaultCollapsed, setDefaultCollapsed, "Collapse blocks by default")}
         </div>
       )}
     </div>
@@ -763,17 +744,22 @@ function AdvancedSettings({
 }
 
 function ReasoningPane({ text, wrapCls }: { text: string; wrapCls: string }) {
-  const [open, setOpen] = useState(true);
+  const collapse = useContext(CollapseContext);
+  const defaultCollapsed = useContext(DefaultCollapsedContext);
+  const [open, setOpen] = useState(!defaultCollapsed);
+  useEffect(() => {
+    setOpen(!collapse.allCollapsed);
+  }, [collapse.tick]);
   return (
     <div className="border-t border-neutral-800">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between px-4 py-1.5 text-left hover:bg-neutral-800/40"
+        className="flex w-full items-center gap-2 px-4 py-1.5 text-left hover:bg-neutral-800/40"
       >
+        <span className="font-mono text-xs text-neutral-500">{open ? "▾" : "▸"}</span>
         <span className="rounded bg-neutral-800 px-2 py-0.5 font-mono text-xs text-neutral-400">
           Thinking
         </span>
-        <span className="font-mono text-xs text-neutral-500">{open ? "▾" : "▸"}</span>
       </button>
       {open && (
         <pre className={`max-h-80 overflow-auto px-4 py-2 font-mono text-xs leading-relaxed text-neutral-400 ${wrapCls}`}>
@@ -789,7 +775,12 @@ function ToolCallItem({
 }: {
   tc: { id: string; name: string; input?: unknown; startAt: number; endAt?: number; error?: string };
 }) {
-  const [open, setOpen] = useState(false);
+  const collapse = useContext(CollapseContext);
+  const defaultCollapsed = useContext(DefaultCollapsedContext);
+  const [open, setOpen] = useState(!defaultCollapsed);
+  useEffect(() => {
+    setOpen(!collapse.allCollapsed);
+  }, [collapse.tick]);
   const running = tc.endAt === undefined;
   const dur = tc.endAt !== undefined ? (tc.endAt - tc.startAt) / 1000 : undefined;
   const preview =
@@ -805,6 +796,11 @@ function ToolCallItem({
         onClick={() => setOpen((v) => !v)}
         className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 px-4 py-1.5 text-left hover:bg-neutral-800/40"
       >
+        {preview ? (
+          <span className="font-mono text-xs text-neutral-500">{open ? "▾" : "▸"}</span>
+        ) : (
+          <span className="font-mono text-xs text-neutral-700">·</span>
+        )}
         <span className="rounded bg-neutral-800 px-2 py-0.5 font-mono text-xs text-sky-300">
           {tc.name}
         </span>
@@ -813,9 +809,6 @@ function ToolCallItem({
         </span>
         {dur !== undefined && (
           <span className="font-mono text-xs text-neutral-500">{dur.toFixed(1)}s</span>
-        )}
-        {preview && (
-          <span className="ml-auto font-mono text-xs text-neutral-500">{open ? "▾" : "▸"}</span>
         )}
       </button>
       {open && preview && (
@@ -850,15 +843,15 @@ function FilesPanel() {
   const fmtSize = (b: number) =>
     b > 1e9 ? `${(b / 1e9).toFixed(2)} GB` : `${(b / 1e6).toFixed(1)} MB`;
   return (
-    <div className="mb-6 overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
+    <div className="overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center justify-between border-b border-neutral-800 px-4 py-2 hover:bg-neutral-800/50"
+        className="flex w-full items-center gap-2 border-b border-neutral-800 px-4 py-2 hover:bg-neutral-800/50"
       >
+        <span className="font-mono text-xs text-neutral-500">{expanded ? "▾" : "▸"}</span>
         <span className="text-sm font-medium text-neutral-200">
           Outputs <span className="text-neutral-500">({files.length})</span>
         </span>
-        <span className="font-mono text-xs text-neutral-500">{expanded ? "▾" : "▸"}</span>
       </button>
       {expanded && (
         <div className="divide-y divide-neutral-800">
@@ -901,7 +894,7 @@ function StatusDot({ status }: { status: string }) {
   return (
     <span className="flex items-center gap-2 text-xs text-neutral-400">
       <span className={`h-2 w-2 rounded-full ${color}`} />
-      {status}
+      {status === "open" ? "connected" : status}
     </span>
   );
 }
