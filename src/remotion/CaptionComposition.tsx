@@ -3,6 +3,7 @@ import { AbsoluteFill, OffthreadVideo, staticFile, useCurrentFrame, useVideoConf
 import { SubtitleWithWordTimings } from "./SubtitleWithWordTimings.js";
 import { StaticText } from "./StaticText.js";
 import { FontLoader } from "./FontLoader.js";
+import { BannerOverlay } from "./BannerOverlay.js";
 import type { CaptionCompositionProps } from "./lib/types.js";
 
 export const CaptionComposition: React.FC<CaptionCompositionProps> = ({
@@ -11,6 +12,7 @@ export const CaptionComposition: React.FC<CaptionCompositionProps> = ({
   config,
   durationSec,
   title,
+  banner,
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -20,6 +22,11 @@ export const CaptionComposition: React.FC<CaptionCompositionProps> = ({
     <AbsoluteFill style={{ backgroundColor: "#000" }}>
       <FontLoader fonts={config.fonts} />
       <OffthreadVideo src={staticFile(videoSrc)} />
+      {banner && (
+        <AbsoluteFill style={{ zIndex: 1 }}>
+          <BannerOverlay currentSeconds={currentSeconds} durationSec={durationSec} banner={banner} />
+        </AbsoluteFill>
+      )}
       {title && (
         <AbsoluteFill style={{ zIndex: 2 }}>
           <StaticText

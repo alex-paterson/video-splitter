@@ -72,6 +72,24 @@ async function main() {
 
   const config = { ...plan.style, fonts };
   const title = plan.title ? { text: plan.title.text, config: { ...plan.title.style, fonts } } : undefined;
+
+  let bannerProp: unknown = undefined;
+  if (plan.banner) {
+    const absBannerSrc = path.resolve(plan.banner.src);
+    if (!fs.existsSync(absBannerSrc)) {
+      throw new Error(`Banner PNG not found: ${absBannerSrc}`);
+    }
+    const bannerBase = path.basename(absBannerSrc);
+    const bannerInPublic = path.join(publicDir, bannerBase);
+    try {
+      fs.linkSync(absBannerSrc, bannerInPublic);
+    } catch {
+      fs.copyFileSync(absBannerSrc, bannerInPublic);
+    }
+    bannerProp = { ...plan.banner, src: bannerBase };
+    process.stderr.write(`Banner: ${absBannerSrc} → ${bannerBase}\n`);
+  }
+
   const inputProps = {
     videoSrc: mp4BasenameInPublic,
     videoWidth: width,
@@ -80,6 +98,7 @@ async function main() {
     phrases: plan.phrases,
     config,
     title,
+    banner: bannerProp,
   };
 
   const entry = path.join(repoRoot, "src/remotion/index.ts");

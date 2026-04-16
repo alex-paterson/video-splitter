@@ -21,6 +21,7 @@ program
   .requiredOption("--topic <text>", "Short topic (used as the subject anchor)")
   .requiredOption("--description <text>", "Longer summary/story describing what happens or matters — used to ground the illustration in real specifics")
   .requiredOption("--output <path>", "Output PNG path")
+  .option("--user-prompt <text>", "Original user request — shapes the imagery (e.g. 'make it feel chaotic', 'retro 8-bit style')")
   .option("--width <px>", "Image width in pixels", "1024")
   .option("--model <model>", "OpenAI image model", "gpt-image-1")
   .option("--style <desc>", "Style hint", "bold illustrated raster artwork, vivid saturated colors, thick black outlines, comic/sticker style, transparent background");
@@ -31,6 +32,7 @@ program.parse();
 const opts = program.opts<{
   topic: string;
   description: string;
+  userPrompt?: string;
   output: string;
   width: string;
   model: string;
@@ -60,10 +62,14 @@ async function main() {
 
   const client = new OpenAI({ apiKey });
   const description = opts.description.replace(/\s+/g, " ").trim().slice(0, 1200);
+  const userPromptBlock = opts.userPrompt
+    ? `\nUser's original request (their tone, style, or mood cues should shape the imagery):\n"""${opts.userPrompt.replace(/\s+/g, " ").trim().slice(0, 600)}"""\n`
+    : "";
   const prompt =
     `A wide horizontal illustration depicting the subject: "${phrase}".\n` +
-    `Context / what is actually happening in the source material (ground the illustration in these specifics, not generic imagery):\n${description}\n\n` +
-    `${opts.style}. Pure pictorial imagery — NO text, NO letters, NO words, NO captions anywhere in the image. ` +
+    `Context / what is actually happening in the source material (ground the illustration in these specifics, not generic imagery):\n${description}\n` +
+    userPromptBlock +
+    `\n${opts.style}. Pure pictorial imagery — NO text, NO letters, NO words, NO captions anywhere in the image. ` +
     `The subject is centered and clearly recognizable, composed for a horizontal top-banner aspect.`;
 
   const res = await client.images.generate({

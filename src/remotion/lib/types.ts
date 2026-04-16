@@ -60,6 +60,23 @@ export interface Phrase {
   words: PhraseWord[];
 }
 
+export interface BannerOverlay {
+  /** Path relative to publicDir — resolved via staticFile at render time. */
+  src: string;
+  horizontalAlignment: HorizontalAlignment;
+  verticalAlignment: VerticalAlignment;
+  /** Fraction of canvas width for the max bounding box. */
+  maxWidthPct: number;
+  /** Fraction of canvas height for the max bounding box. */
+  maxHeightPct: number;
+  paddingPx: number;
+  opacity: number;
+  /** When the banner becomes visible (seconds); default 0. */
+  startSec?: number;
+  /** When the banner disappears (seconds); default = durationSec. */
+  endSec?: number;
+}
+
 export interface CaptionCompositionProps {
   videoSrc: string;
   videoWidth: number;
@@ -68,4 +85,5 @@ export interface CaptionCompositionProps {
   phrases: Phrase[];
   config: CaptionConfig;
   title?: { text: string; config: CaptionConfig };
+  banner?: BannerOverlay;
 }

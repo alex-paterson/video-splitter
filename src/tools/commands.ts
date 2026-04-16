@@ -108,7 +108,7 @@ export const topicToCompilation = cliTool({
 export const topicToBanner = cliTool({
   name: "topic_to_banner",
   description:
-    "Generate a transparent PNG banner (3-5 word headline) for a topic via the OpenAI images API. Pass the resulting path as `banner` to compilation_render or segment_render to overlay it at top-center.",
+    "Generate a pictorial transparent PNG banner for a topic via the OpenAI images API. Pass the resulting path to caption_plan via --banner so it's overlaid in the same Remotion render as captions.",
   script: "src/commands/topic-to-banner.ts",
   positional: [],
   input: z.object({
@@ -116,8 +116,12 @@ export const topicToBanner = cliTool({
     description: z
       .string()
       .describe(
-        "Longer summary/story of what actually happens in this compilation or segment. Pulled from the .topic.json 'story' field, the .compilation.json 'story', or the .segment.json 'rationale'. Used to ground the illustration in real specifics."
+        "Longer summary/story of what actually happens in this compilation/segment. Pull from the .topic.json 'story', the .compilation.json 'story', or the .segment.json 'rationale'. Grounds the illustration in real specifics."
       ),
+    userPrompt: z
+      .string()
+      .optional()
+      .describe("Original user request — shapes imagery tone/style/mood. Forward verbatim when available."),
     output: z.string().describe("Output PNG path"),
     width: z.number().optional(),
     style: z.string().optional(),
@@ -145,7 +149,7 @@ export const compilationRefine = cliTool({
 export const compilationRender = cliTool({
   name: "compilation_render",
   description:
-    "Render a .compilation.json plan to a single 9:16 portrait MP4 (default). Final step — only run after reviewing the plan.",
+    "Render a .compilation.json plan to a single 9:16 portrait MP4 (default). Final step for the creator — only run after reviewing the plan. Banners are NOT applied here; they are overlaid by the post-processor via Remotion (caption_plan --banner + video_caption_render).",
   script: "src/commands/compilation-render.ts",
   positional: ["compilation"],
   input: z.object({
@@ -154,7 +158,6 @@ export const compilationRender = cliTool({
     aspect: z.string().optional(),
     resolution: z.string().optional().describe("Override output WxH, e.g. 540x960 for half-res"),
     preset: z.string().optional().describe("ffmpeg preset (ultrafast|fast|medium|slow)"),
-    banner: z.string().optional().describe("Optional PNG overlaid centered on the video"),
     output: z.string().optional(),
   }),
 });
@@ -180,7 +183,7 @@ export const transcriptFindSegment = cliTool({
 
 export const segmentRender = cliTool({
   name: "segment_render",
-  description: "Render a single .segment.json to a cropped/reframed video clip. Supports hwAccel (nvenc|vaapi|videotoolbox), resolution (e.g. 540x960 for half-res), and preset for fast encodes.",
+  description: "Render a single .segment.json to a cropped/reframed video clip. Supports hwAccel (nvenc|vaapi|videotoolbox), resolution (e.g. 540x960 for half-res), and preset for fast encodes. Banners are NOT applied here; the post-processor overlays them via Remotion.",
   script: "src/commands/segment-render.ts",
   positional: ["input", "segment"],
   input: z.object({
@@ -190,7 +193,6 @@ export const segmentRender = cliTool({
     resolution: z.string().optional().describe("Override output WxH, e.g. 540x960 for half-res"),
     preset: z.string().optional().describe("ffmpeg preset (ultrafast|fast|medium|slow)"),
     hwAccel: z.string().optional().describe("nvenc | vaapi | videotoolbox"),
-    banner: z.string().optional().describe("Optional PNG overlaid at top-center of the output, scaled to video width"),
     output: z.string().optional(),
   }),
 });
@@ -326,6 +328,15 @@ export const captionPlan = cliTool({
     titlePaddingHorizontal: z.number().optional(),
     titleCapitalization: z.string().optional(),
     titleBackgroundColor: z.string().optional(),
+    banner: z.string().optional().describe("Absolute path to a PNG to overlay (aspect-scaled). Use topic_to_banner to generate one first."),
+    bannerVerticalAlign: z.string().optional().describe("top | middle | bottom (default top)"),
+    bannerHorizontalAlign: z.string().optional().describe("left | center | right (default center)"),
+    bannerMaxWidthPct: z.number().optional().describe("Max banner width as a fraction of canvas width (default 0.9)"),
+    bannerMaxHeightPct: z.number().optional().describe("Max banner height as a fraction of canvas height (default 0.35)"),
+    bannerPaddingPx: z.number().optional().describe("Padding between banner bounding box and canvas edge (default 40)"),
+    bannerOpacity: z.number().optional().describe("Opacity 0..1 (default 1.0)"),
+    bannerStartSec: z.number().optional().describe("When banner appears (default 0)"),
+    bannerEndSec: z.number().optional().describe("When banner disappears (default full duration)"),
   }),
 });
 

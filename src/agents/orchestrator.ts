@@ -80,7 +80,7 @@ ${HARD_RULES}
 FIRST and LAST:
 - At the very start of each run, call memory_read ONCE to recall the last 10 summaries. Use them only for context — do not re-execute prior work.
 - At the very end of EVERY run, call memory_append ONCE with a brief summary (3-8 lines). This is MANDATORY and unconditional — call it whether the run succeeded, partially succeeded, was cancelled, or failed outright. Memory is the agent's persistent knowledge of the conversation, so a failed run is just as important to record as a successful one. Do not call memory_append more than once per run, and call it as the very last action.
-  - On SUCCESS: what the user asked, the final MP4 path(s) produced, notable assumptions/defaults. For any compilation produced, ALSO record the final .compilation[.N].json path — a future run may ask to modify/refine that compilation and needs the JSON path to do so. For any MP4 that was captioned or reframed by the post-processor, ALSO record the .caption[.N].json and/or .framer.filtered[.N].json paths — future refinement requests need them.
+  - On SUCCESS: what the user asked, the final MP4 path(s) produced, notable assumptions/defaults. For any compilation produced, ALSO record the final .compilation[.N].json path — a future run may ask to modify/refine that compilation and needs the JSON path to do so. For any MP4 that was captioned, reframed, or bannered by the post-processor, ALSO record the .caption[.N].json, .framer.filtered[.N].json, and .banner.png paths — future refinement requests need them.
   - On PARTIAL: what the user asked, what was produced vs. what was skipped, why some slots failed.
   - On FAILURE: what the user asked, what was attempted, where it broke (which tool, which input), the error message, and any defaults you committed to. Don't editorialise — record what you observed so a future run can avoid the same dead end.
 
@@ -124,7 +124,7 @@ Step 1 — Parse the user's message:
   - If intent is ambiguous (just "a few videos"), ask the user to clarify.
 - COUNTS — an integer for each requested type. "2 shorts and 3 clips" means N_compilations=2, N_segments=3. A single count like "3 shorts" means N_compilations=3, N_segments=0.
 - MAX-SECONDS — if the user says "under 45s", "max 1 minute", "no longer than Ns", capture as maxSeconds.
-- BANNER — if the user says "with a banner", "title card", "add a banner", "with a label", set banner=true and PASS banner=true to agents_plan_and_render_many / agents_plan_and_render_segments. Otherwise omit banner (default false).
+- BANNER — if the user says "with a banner", "title card", "add a banner", "with a label", set banner=true. DO NOT pass banner=true down to creator fan-out tools; banner is a post-processing step now. Instead, after the creator fan-out completes successfully (Step 2 below), invoke agent_post_processor ONCE per produced MP4 with a prompt that says "banner mode, user wants a banner — generate via topic_to_banner using the compilation/segment sidecar's topic+story+rationale AND the original user prompt as context, then overlay via caption_plan --banner + video_caption_render. Defaults: scale-to-fit, top-center." Pass the verbatim USER PROMPT and the paths (tmp/ MP4, sidecar JSON, source MKV). Default banner position is top-center, aspect scale-to-fit.
 - BLEEP — if the user says "no swearing", "bleep", "censor", "PG", "family-friendly", "clean", set bleep=true. If they list explicit words, capture as bleepWords (csv).
 - KEEP SILENCE — only if the user explicitly says to keep silence.
 
@@ -155,6 +155,7 @@ Step 2 — Drive the pipeline:
    - agents_plan_and_render_many(topics, keepSilence?, maxSeconds?, bleep?, bleepWords?) for compilations.
    - agents_plan_and_render_segments(segments, keepSilence?, maxSeconds?, bleep?, bleepWords?) for segments.
    Invoke both if both requested — Strands will run them in parallel when possible.
+4. If banner=true (from Step 1): after fan-out returns the published MP4 paths, invoke agent_post_processor ONCE per MP4 with a natural-language prompt including: "OpType: banner. PriorMP4: <tmp/ path>. Sidecar: <tmp/ compilation-or-segment JSON>. SourceMKV: <tmp/ MKV>. UserInstruction: banner default (scale-to-fit, top-center). USER PROMPT: \"\"\"<verbatim top-level user request>\"\"\". Banner imagery must reflect both the user's request and the compilation/segment content — topic_to_banner needs topic, description (story/rationale), and userPrompt." The post-processor generates the PNG and folds it into a single Remotion caption render.
 
 Step 3 — Final answer: a short summary listing the final MP4 paths (one line per short/clip). If any slot reports a duration still over max after refinement, note that too.
 

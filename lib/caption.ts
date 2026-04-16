@@ -44,6 +44,18 @@ export const CaptionTitleSchema = z.object({
   style: CaptionStyleSchema,
 });
 
+export const BannerConfigSchema = z.object({
+  src: z.string().describe("Absolute path to the banner PNG"),
+  horizontalAlignment: HorizontalAlignmentSchema,
+  verticalAlignment: VerticalAlignmentSchema,
+  maxWidthPct: z.number(),
+  maxHeightPct: z.number(),
+  paddingPx: z.number(),
+  opacity: z.number(),
+  startSec: z.number().optional(),
+  endSec: z.number().optional(),
+});
+
 export const CaptionPlanSchema = z.object({
   source_mp4: z.string(),
   words_source: z.string(),
@@ -52,6 +64,7 @@ export const CaptionPlanSchema = z.object({
   durationSec: z.number(),
   style: CaptionStyleSchema,
   title: CaptionTitleSchema.optional(),
+  banner: BannerConfigSchema.optional(),
   phrases: z.array(PhraseSchema),
 });
 
@@ -59,7 +72,17 @@ export type CaptionStyle = z.infer<typeof CaptionStyleSchema>;
 export type Phrase = z.infer<typeof PhraseSchema>;
 export type PhraseWord = z.infer<typeof PhraseWordSchema>;
 export type CaptionTitle = z.infer<typeof CaptionTitleSchema>;
+export type BannerConfig = z.infer<typeof BannerConfigSchema>;
 export type CaptionPlan = z.infer<typeof CaptionPlanSchema>;
+
+export const DEFAULT_BANNER_CONFIG: Omit<BannerConfig, "src"> = {
+  horizontalAlignment: "center",
+  verticalAlignment: "top",
+  maxWidthPct: 0.9,
+  maxHeightPct: 0.35,
+  paddingPx: 40,
+  opacity: 1.0,
+};
 
 export const DEFAULT_STYLE: CaptionStyle = {
   fontColor: "#FFFFFF",

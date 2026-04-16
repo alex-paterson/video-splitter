@@ -28,7 +28,10 @@
       "Bash(wc *)",
       "Bash(ffmpeg -y -ss 2 -i /tmp/test.captioned.mp4 -frames:v 1 /tmp/frames/caption-t2.jpg)",
       "Bash(ffmpeg -y -ss 2 -i /tmp/test.reframed.mp4 -frames:v 1 /tmp/frames/reframed.jpg)",
-      "Bash(ffmpeg -y -hide_banner -loglevel error -i \"tmp/2026-04-13 22-05-31.audio.mp3\" -t 15 -c copy /tmp/test15.mp3)"
+      "Bash(ffmpeg -y -hide_banner -loglevel error -i \"tmp/2026-04-13 22-05-31.audio.mp3\" -t 15 -c copy /tmp/test15.mp3)",
+      "Bash(ffmpeg -y -hide_banner -loglevel error -i \"tmp/2026-04-13 22-05-31.claude-makes-the-spiderweb-trap-token-pu.compilation.2.json.compilation.cut.bleeped.mp4\" -t 8 -c copy /tmp/test8.mp4)",
+      "Bash(ffmpeg -y -ss 2 -i /tmp/test8.banner.mp4 -frames:v 1 /tmp/frames/banner-t2.jpg)",
+      "Bash(ffmpeg -y -ss 2 -i \"tmp/2026-04-13 22-05-31.claude-makes-the-spiderweb-trap-token-pu.compilation.2.json.compilation.cut.bleeped.mp4\" -frames:v 1 /tmp/frames/source-t2.jpg)"
     ]
   }
 }

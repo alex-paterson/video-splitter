@@ -398,10 +398,6 @@ export function makePlanAndRenderManyTool(makeAgent: () => Agent) {
         .string()
         .optional()
         .describe("Optional comma-separated list of words to bleep."),
-      banner: z
-        .boolean()
-        .optional()
-        .describe("If true, generate and overlay a centered banner PNG. Default false."),
       userPrompt: z
         .string()
         .optional()
@@ -413,7 +409,6 @@ export function makePlanAndRenderManyTool(makeAgent: () => Agent) {
       maxSeconds,
       bleep,
       bleepWords,
-      banner,
       userPrompt,
     }: {
       topics: string[];
@@ -421,7 +416,6 @@ export function makePlanAndRenderManyTool(makeAgent: () => Agent) {
       maxSeconds?: number;
       bleep?: boolean;
       bleepWords?: string;
-      banner?: boolean;
       userPrompt?: string;
     }, ctx?: ToolCtx) => {
       const sig = getCancelSignal(ctx);
@@ -439,9 +433,6 @@ export function makePlanAndRenderManyTool(makeAgent: () => Agent) {
       const bleepHint = bleep || bleepWords
         ? `\nBLEEP: after silence-strip and before video_publish, call video_bleep on the silence-stripped MP4.${bleepWords ? ` Pass words="${bleepWords}".` : " Pass auto=true."} Then call video_publish on it.`
         : "";
-      const bannerHint = banner
-        ? "\nBANNER: REQUIRED. Run topic_to_banner and pass banner=<png> to compilation_render. Verify the render's stderr shows 'Banner: <path>' (not '(none)')."
-        : "";
       const userHint = userPrompt
         ? `\nUSER PROMPT (forward verbatim as userPrompt to topic_to_compilation and any compilation_refine calls): """${userPrompt}"""`
         : "";
@@ -449,7 +440,7 @@ export function makePlanAndRenderManyTool(makeAgent: () => Agent) {
         invokeSubagent(
           makeAgent(),
           `compilation[${i + 1}/${topics.length}] ${topicPath}`,
-          `Produce the final MP4 for this topic: ${topicPath}${silenceHint}${silenceStrippedHint}${maxHint}${bleepHint}${bannerHint}${userHint}`,
+          `Produce the final MP4 for this topic: ${topicPath}${silenceHint}${silenceStrippedHint}${maxHint}${bleepHint}${userHint}`,
           sig,
         )
       );
@@ -488,7 +479,6 @@ export function makePlanAndRenderSegmentsTool(makeAgent: () => Agent) {
       maxSeconds: z.number().optional(),
       bleep: z.boolean().optional(),
       bleepWords: z.string().optional(),
-      banner: z.boolean().optional(),
       userPrompt: z.string().optional().describe("Original top-level user request; forwarded to each creator."),
     }),
     callback: async ({
@@ -497,7 +487,6 @@ export function makePlanAndRenderSegmentsTool(makeAgent: () => Agent) {
       maxSeconds,
       bleep,
       bleepWords,
-      banner,
       userPrompt,
     }: {
       segments: string[];
@@ -505,7 +494,6 @@ export function makePlanAndRenderSegmentsTool(makeAgent: () => Agent) {
       maxSeconds?: number;
       bleep?: boolean;
       bleepWords?: string;
-      banner?: boolean;
       userPrompt?: string;
     }, ctx?: ToolCtx) => {
       const sig = getCancelSignal(ctx);
@@ -519,9 +507,6 @@ export function makePlanAndRenderSegmentsTool(makeAgent: () => Agent) {
       const bleepHint = bleep || bleepWords
         ? `\nBLEEP: after silence-strip and before video_publish, call video_bleep on the silence-stripped MP4.${bleepWords ? ` Pass words="${bleepWords}".` : " Pass auto=true."} Then call video_publish on it.`
         : "";
-      const bannerHint = banner
-        ? "\nBANNER: REQUIRED. Run topic_to_banner and pass banner=<png> to segment_render. Verify the render's stderr shows 'Banner: <path>' (not '(none)')."
-        : "";
       const userHint = userPrompt
         ? `\nUSER PROMPT (top-level user request that motivated this segment): """${userPrompt}"""`
         : "";
@@ -529,7 +514,7 @@ export function makePlanAndRenderSegmentsTool(makeAgent: () => Agent) {
         invokeSubagent(
           makeAgent(),
           `segment[${i + 1}/${segments.length}] ${segmentPath}`,
-          `Produce the final MP4 for this segment: ${segmentPath}${silenceHint}${maxHint}${bleepHint}${bannerHint}${userHint}`,
+          `Produce the final MP4 for this segment: ${segmentPath}${silenceHint}${maxHint}${bleepHint}${userHint}`,
           sig,
         )
       );

@@ -7,7 +7,6 @@ import {
   videoRemoveSilence,
   videoBleep,
   videoPublish,
-  topicToBanner,
 } from "../tools/commands.js";
 import { readFile } from "../tools/fs-tools.js";
 import { compilationEstimateDuration } from "../tools/estimate.js";
@@ -26,7 +25,6 @@ export function makeCompilationCreatorAgent() {
       videoRemoveSilence,
       videoBleep,
       videoPublish,
-      topicToBanner,
       compilationEstimateDuration,
       readFile,
     ],
@@ -55,16 +53,10 @@ FRESH-TOPIC MODE (default):
    - Clips form a coherent story (no total non-sequiturs).
    - No extremely short (<1s) or extremely long (>60s) clips unless justified by the topic.
    If the plan is bad, re-run topic_to_compilation (possibly adjusting inputs) — do not render a bad plan.
-4. BANNER IS OPT-IN. Skip steps 4a-4c entirely unless the invocation explicitly asks for a banner / title card. If skipped, call compilation_render WITHOUT a banner argument.
-4a. Before rendering, call topic_to_banner with:
-   - topic = the compilation's topic string
-   - description = the "story" field from the .compilation[.N].json (the full narrative summary — this grounds the illustration in what actually happens, not generic imagery)
-   - output = <same-dir>/<base>.banner.png
-   It generates a pictorial PNG via OpenAI. Pass that path as the "banner" argument to compilation_render so it's overlaid at top-center. Skip only if the user explicitly asks for "no banner".
-5. Call compilation_render on the final .compilation[.N].json. Default args: aspect="landscape", resolution="1280x720", preset="fast", hwAccel="nvenc" (fall back to vaapi if nvenc errors). Pass banner=<png> only if step 4 generated one.
-6. By default, immediately call video_remove_silence on that rendered MP4 with reencode=true to strip empty audio. The default output path will be <base>.compilation.cut.mp4. Skip this step ONLY if the top-level user prompt explicitly says to keep silence.
-7. If the invocation says to bleep/censor/profanity (or provides an explicit words list), as the FINAL step call video_bleep on the silence-stripped MP4. Pass auto=true unless words were given; if words were given, pass them as the "words" argument. video_bleep re-transcribes the cut itself with word-level timestamps, so bleep timing is accurate to the final output. Return the resulting .bleeped.mp4 path.
-8. As the VERY LAST step, call video_publish(input=<final-tmp-mp4>) to copy the final MP4 into out/. That is the ONLY thing that writes to out/ — none of the earlier steps do. Return the path returned by video_publish as your final answer.
+4. Call compilation_render on the final .compilation[.N].json. Default args: aspect="landscape", resolution="1280x720", preset="fast", hwAccel="nvenc" (fall back to vaapi if nvenc errors). Banners are NOT your responsibility — if the user asked for one, the orchestrator invokes agent_post_processor after you publish to overlay it via Remotion.
+5. By default, immediately call video_remove_silence on that rendered MP4 with reencode=true to strip empty audio. The default output path will be <base>.compilation.cut.mp4. Skip this step ONLY if the top-level user prompt explicitly says to keep silence.
+6. If the invocation says to bleep/censor/profanity (or provides an explicit words list), as the FINAL step call video_bleep on the silence-stripped MP4. Pass auto=true unless words were given; if words were given, pass them as the "words" argument. video_bleep re-transcribes the cut itself with word-level timestamps, so bleep timing is accurate to the final output. Return the resulting .bleeped.mp4 path.
+7. As the VERY LAST step, call video_publish(input=<final-tmp-mp4>) to copy the final MP4 into out/. That is the ONLY thing that writes to out/ — none of the earlier steps do. Return the path returned by video_publish as your final answer.
 `.trim(),
   });
 }

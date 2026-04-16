@@ -11,8 +11,10 @@ import { Command } from "commander";
 import path from "path";
 import fs from "fs";
 import {
+  BannerConfig,
   CaptionPlan,
   CaptionStyle,
+  DEFAULT_BANNER_CONFIG,
   DEFAULT_STYLE,
   applyPreset,
   applyTitlePreset,
@@ -62,6 +64,15 @@ program
   .option("--title-padding-horizontal <n>")
   .option("--title-capitalization <c>")
   .option("--title-background-color <c>")
+  .option("--banner <png>", "Absolute path to a PNG to overlay on the video. Default: no banner.")
+  .option("--banner-vertical-align <v>", "top | middle | bottom (default top)")
+  .option("--banner-horizontal-align <h>", "left | center | right (default center)")
+  .option("--banner-max-width-pct <n>", "Max banner width as fraction of canvas width (default 0.9)")
+  .option("--banner-max-height-pct <n>", "Max banner height as fraction of canvas height (default 0.35)")
+  .option("--banner-padding-px <n>", "Padding around banner in px (default 40)")
+  .option("--banner-opacity <n>", "Opacity 0..1 (default 1.0)")
+  .option("--banner-start-sec <n>", "When banner appears (default 0)")
+  .option("--banner-end-sec <n>", "When banner disappears (default full duration)")
   .parse(process.argv);
 
 const opts = program.opts<Record<string, string | boolean | undefined>>();
@@ -142,6 +153,26 @@ async function main() {
     gapSec: style.phraseGapSec,
   });
 
+  let banner: BannerConfig | undefined;
+  if (opts.banner) {
+    const bannerSrc = path.resolve(String(opts.banner));
+    if (!fs.existsSync(bannerSrc)) {
+      process.stderr.write(`ERROR: banner PNG not found: ${bannerSrc}\n`);
+      process.exit(1);
+    }
+    banner = {
+      src: bannerSrc,
+      horizontalAlignment: (opts.bannerHorizontalAlign as BannerConfig["horizontalAlignment"]) ?? DEFAULT_BANNER_CONFIG.horizontalAlignment,
+      verticalAlignment: (opts.bannerVerticalAlign as BannerConfig["verticalAlignment"]) ?? DEFAULT_BANNER_CONFIG.verticalAlignment,
+      maxWidthPct: num(opts.bannerMaxWidthPct, DEFAULT_BANNER_CONFIG.maxWidthPct),
+      maxHeightPct: num(opts.bannerMaxHeightPct, DEFAULT_BANNER_CONFIG.maxHeightPct),
+      paddingPx: num(opts.bannerPaddingPx, DEFAULT_BANNER_CONFIG.paddingPx),
+      opacity: num(opts.bannerOpacity, DEFAULT_BANNER_CONFIG.opacity),
+      ...(opts.bannerStartSec != null ? { startSec: num(opts.bannerStartSec, 0) } : {}),
+      ...(opts.bannerEndSec != null ? { endSec: num(opts.bannerEndSec, wordsFile.duration_s) } : {}),
+    };
+  }
+
   const plan: CaptionPlan = {
     source_mp4: wordsFile.source_mp4,
     words_source: wordsPath,
@@ -150,6 +181,7 @@ async function main() {
     durationSec: wordsFile.duration_s,
     style,
     title,
+    banner,
     phrases,
   };
 
@@ -162,7 +194,7 @@ async function main() {
   process.stderr.write(
     `Wrote ${outPath}\n` +
       `  ${phrases.length} phrases from ${wordsFile.words.length} words, ${plan.durationSec.toFixed(1)}s @${style.fps}fps\n` +
-      `  style: ${opts.style ?? "default"}${title ? ` + title "${title.text}"` : ""}\n`,
+      `  style: ${opts.style ?? "default"}${title ? ` + title "${title.text}"` : ""}${banner ? ` + banner ${banner.verticalAlignment}/${banner.horizontalAlignment} ${Math.round(banner.maxWidthPct * 100)}%x${Math.round(banner.maxHeightPct * 100)}%` : ""}\n`,
   );
   process.stdout.write(outPath + "\n");
 }
