@@ -39,7 +39,26 @@ if (opts.replace) {
   }
 }
 
-const dest = path.join(publishDir, path.basename(absInput));
+const dest = nextAvailablePath(path.join(publishDir, path.basename(absInput)));
 fs.copyFileSync(absInput, dest);
 process.stderr.write(`Published: ${dest}\n`);
 process.stdout.write(dest + "\n");
+
+function nextAvailablePath(target: string): string {
+  if (!fs.existsSync(target)) return target;
+  const dir = path.dirname(target);
+  const ext = path.extname(target);
+  const stem = path.basename(target, ext);
+  const match = stem.match(/^(.*)-(\d+)$/);
+  let base = stem;
+  let n = 1;
+  if (match) {
+    base = match[1];
+    n = parseInt(match[2], 10) + 1;
+  }
+  while (true) {
+    const candidate = path.join(dir, `${base}-${n}${ext}`);
+    if (!fs.existsSync(candidate)) return candidate;
+    n++;
+  }
+}
