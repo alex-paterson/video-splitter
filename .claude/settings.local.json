@@ -23,7 +23,12 @@
       "Read(//mnt/macmini/**)",
       "Bash(xxd)",
       "Bash(ls -la ~/OBS/*spiderweb*)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(ls *)",
+      "Bash(wc *)",
+      "Bash(ffmpeg -y -ss 2 -i /tmp/test.captioned.mp4 -frames:v 1 /tmp/frames/caption-t2.jpg)",
+      "Bash(ffmpeg -y -ss 2 -i /tmp/test.reframed.mp4 -frames:v 1 /tmp/frames/reframed.jpg)",
+      "Bash(ffmpeg -y -hide_banner -loglevel error -i \"tmp/2026-04-13 22-05-31.audio.mp3\" -t 15 -c copy /tmp/test15.mp3)"
     ]
   }
 }

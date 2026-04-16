@@ -4,6 +4,7 @@ import { makeTopicScoutAgent } from "./agent-topic-scout.js";
 import { makeCompilationCreatorAgent } from "./agent-compilation-creator.js";
 import { makeSegmentScoutAgent } from "./agent-segment-scout.js";
 import { makeSegmentCreatorAgent } from "./agent-segment-creator.js";
+import { makePostProcessorAgent } from "./agent-post-processor.js";
 import {
   makePlanAndRenderManyTool,
   makePlanAndRenderSegmentsTool,
@@ -37,6 +38,11 @@ export function makeOrchestratorAgent() {
     description: "Render and silence-strip ONE segment from a .segment.json. Input: natural-language prompt. Returns the final MP4 path.",
     makeAgent: makeSegmentCreatorAgent,
   });
+  const postProcessor = makeSubagentTool({
+    name: "agent_post_processor",
+    description: "Apply post-render transforms (captions and/or aspect reframe, plus refinements) to an already-published MP4. Input: natural-language prompt with prior MP4 path, source MKV path, sidecar JSON path, and the user's modification instruction. Returns the new published MP4 path.",
+    makeAgent: makePostProcessorAgent,
+  });
   const planAndRenderMany = makePlanAndRenderManyTool(makeCompilationCreatorAgent);
   const planAndRenderSegments = makePlanAndRenderSegmentsTool(makeSegmentCreatorAgent);
   const transcribeMany = makeTranscribeManyTool();
@@ -54,6 +60,7 @@ export function makeOrchestratorAgent() {
       compilation,
       segmentScout,
       segment,
+      postProcessor,
       planAndRenderMany,
       planAndRenderSegments,
       transcribeMany,
@@ -73,7 +80,7 @@ ${HARD_RULES}
 FIRST and LAST:
 - At the very start of each run, call memory_read ONCE to recall the last 10 summaries. Use them only for context — do not re-execute prior work.
 - At the very end of EVERY run, call memory_append ONCE with a brief summary (3-8 lines). This is MANDATORY and unconditional — call it whether the run succeeded, partially succeeded, was cancelled, or failed outright. Memory is the agent's persistent knowledge of the conversation, so a failed run is just as important to record as a successful one. Do not call memory_append more than once per run, and call it as the very last action.
-  - On SUCCESS: what the user asked, the final MP4 path(s) produced, notable assumptions/defaults. For any compilation produced, ALSO record the final .compilation[.N].json path — a future run may ask to modify/refine that compilation and needs the JSON path to do so.
+  - On SUCCESS: what the user asked, the final MP4 path(s) produced, notable assumptions/defaults. For any compilation produced, ALSO record the final .compilation[.N].json path — a future run may ask to modify/refine that compilation and needs the JSON path to do so. For any MP4 that was captioned or reframed by the post-processor, ALSO record the .caption[.N].json and/or .framer.filtered[.N].json paths — future refinement requests need them.
   - On PARTIAL: what the user asked, what was produced vs. what was skipped, why some slots failed.
   - On FAILURE: what the user asked, what was attempted, where it broke (which tool, which input), the error message, and any defaults you committed to. Don't editorialise — record what you observed so a future run can avoid the same dead end.
 
@@ -92,6 +99,20 @@ Step 0 — Classify the request:
        "Refine-existing mode. Compilation JSON: <path>. User instruction: <verbatim user text>. Render, silence-strip, return the new MP4 path."
      Pass maxSeconds only if the user explicitly specified one.
   3. In the final answer, list the new MP4 path and the new .compilation[.N].json path. Record both in memory_append.
+- POST-PROCESS requests — apply caption/reframe transforms to an already-produced MP4. Cues:
+    - Caption add: "add captions", "captions on", "burn in captions", "with subtitles", "captions in red/yellow/etc.", "title at top", "title FOO"
+    - Caption refine: "fix the caption text", "the dollar sign was missing", "change the font color", "change the caption color", "title should say X"
+    - Reframe: "reframe to portrait", "make it 9:16", "portrait aspect", "crop to portrait"
+    - Framer refine: "use the github window instead of the terminal", "wrong window", "pick a different region", "show the PR not the lazygit"
+    - Combinations: "captions in red AND reframe to portrait" — all of the above in one request.
+  DO NOT transcribe or topic-scout. Locate three paths, all IN tmp/ (never pass out/ paths downstream — out/ is publish-only):
+  1. The PRIOR MP4 — always resolve the tmp/ counterpart, not the out/ copy. If the user provides an out/ path, derive the matching tmp/<basename> (they share the same filename because video_publish just copies). If that file no longer exists in tmp/, list_dir tmp/ for the closest matching *.compilation*.cut*.mp4 or *.segment*.mp4; fall back to memory_read; if still nothing, answer ERROR and stop.
+  2. The SIDECAR JSON (compilation or segment) that produced that MP4 — always in tmp/. Derive by stripping .captioned, .reframed, .bleeped, .cut, .mp4 from the MP4's basename and appending .compilation.json (or .segment.json). Else pull from memory_read; else list_dir tmp/.
+  3. The SOURCE MKV path — derivable from the sidecar's "source" field (staged MKV in tmp/), or from memory.
+  Invoke agent_post_processor ONCE with a natural-language prompt along the lines of:
+    "PriorMP4: <path>. SourceMKV: <mkv>. Sidecar: <compilation-or-segment-json>. OpType: <caption | caption-refine | reframe | framer-refine | combination>. UserInstruction: <verbatim user text>. USER PROMPT: \"\"\"<verbatim top-level user request>\"\"\"."
+  Classify OpType by whether a prior .caption[.N].json or .framer.filtered[.N].json already exists next to the MP4 (refine) vs. not (fresh). If the user says both "reframe" and "captions in red", pass "caption+reframe". The post-processor handles order-of-operations internally (reframe before caption).
+  In the final answer, list the new published MP4 path. Record in memory_append the new MP4 path AND any new .caption[.N].json / .framer.filtered[.N].json paths the post-processor created — a future refinement run needs them.
 - Only proceed to Step 1 if the user is explicitly asking to PRODUCE one or more NEW videos from source(s) (shorts, clips, compilations, segments, highlights) — i.e. not a modification of an existing one.
 
 Step 1 — Parse the user's message:

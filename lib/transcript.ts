@@ -8,11 +8,20 @@ export const TranscriptSegmentSchema = z.object({
   text: z.string(),
 });
 
+export const TranscriptWordSchema = z.object({
+  start_s: z.number(),
+  end_s: z.number(),
+  word: z.string(),
+  segment_index: z.number().int().optional(),
+});
+
 export const TranscriptSchema = z.object({
   source: z.string(),
   duration_s: z.number(),
   speakers: z.array(z.string()),
   segments: z.array(TranscriptSegmentSchema),
+  words: z.array(TranscriptWordSchema).optional(),
+  schema_version: z.number().int().optional(),
 });
 
 export const SegmentSchema = z.object({
@@ -25,8 +34,13 @@ export const SegmentSchema = z.object({
 });
 
 export type TranscriptSegment = z.infer<typeof TranscriptSegmentSchema>;
+export type TranscriptWord = z.infer<typeof TranscriptWordSchema>;
 export type Transcript = z.infer<typeof TranscriptSchema>;
 export type Segment = z.infer<typeof SegmentSchema>;
+
+export function hasWords(t: Transcript): t is Transcript & { words: TranscriptWord[] } {
+  return (t.schema_version ?? 1) >= 2 && Array.isArray(t.words) && t.words.length > 0;
+}
 
 export function loadTranscript(path: string): Transcript {
   const raw = JSON.parse(fs.readFileSync(path, "utf-8"));

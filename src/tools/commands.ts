@@ -281,6 +281,185 @@ export const videoPublish = cliTool({
   }),
 });
 
+export const captionPlan = cliTool({
+  name: "caption_plan",
+  description:
+    "Build a reviewable .caption.json plan from a .words.json. Phrase segmentation is deterministic (word gaps + max-words + sentence-end splits). Styling comes from `style` preset + optional overrides; title is optional. Consumed by video_caption_render. Refine via caption_refine.",
+  script: "src/commands/caption-plan.ts",
+  positional: ["wordsJson"],
+  boolFlags: ["oneWordAtATime"],
+  input: z.object({
+    wordsJson: z.string().describe("Path to .words.json produced by transcript_project_words"),
+    output: z.string().optional().describe("Output .caption.json path (default: <mp4-base>.caption.json)"),
+    style: z
+      .string()
+      .optional()
+      .describe("Style preset: default | bold-yellow | bold-red | clean-white | minimal"),
+    fontColor: z.string().optional(),
+    fontName: z.string().optional().describe("Must match a file under src/remotion/fonts"),
+    fontSize: z.number().optional(),
+    strokeWidth: z.number().optional(),
+    strokeColor: z.string().optional(),
+    textShadow: z.string().optional(),
+    verticalAlign: z.string().optional().describe("top | middle | bottom"),
+    horizontalAlign: z.string().optional().describe("left | center | right"),
+    paddingVertical: z.number().optional(),
+    paddingHorizontal: z.number().optional(),
+    oneWordAtATime: z.boolean().optional(),
+    highlightColor: z.string().optional(),
+    animation: z.string().optional().describe("none | pop-in | fade-in | slide-in"),
+    capitalization: z.string().optional().describe("none | uppercase"),
+    backgroundColor: z.string().optional().describe("CSS color or 'transparent'"),
+    phraseGapSec: z.number().optional(),
+    maxWordsPerPhrase: z.number().optional(),
+    fps: z.number().optional(),
+    title: z.string().optional().describe("Optional static title rendered for the full clip"),
+    titleStyle: z.string().optional().describe("Title preset; falls back to main --style"),
+    titleFontColor: z.string().optional(),
+    titleFontName: z.string().optional(),
+    titleFontSize: z.number().optional(),
+    titleStrokeWidth: z.number().optional(),
+    titleStrokeColor: z.string().optional(),
+    titleVerticalAlign: z.string().optional(),
+    titleHorizontalAlign: z.string().optional(),
+    titlePaddingVertical: z.number().optional(),
+    titlePaddingHorizontal: z.number().optional(),
+    titleCapitalization: z.string().optional(),
+    titleBackgroundColor: z.string().optional(),
+  }),
+});
+
+export const transcriptProjectWords = cliTool({
+  name: "transcript_project_words",
+  description:
+    "Build a .words.json for a rendered MP4 by projecting word timings from the ORIGINAL .transcript.json onto the output timeline (clips + optional silence removal). Never re-transcribes the cut MP4. Consumed by caption_plan and framer_filter (llm mode).",
+  script: "src/commands/transcript-project-words.ts",
+  positional: [],
+  input: z.object({
+    sourceTranscript: z.string().describe("Path to the original .transcript.json (must be schema v2 with words[])"),
+    compilation: z.string().optional().describe("Path to .compilation[.N].json that produced the MP4 (exclusive with segment)"),
+    segment: z.string().optional().describe("Path to .segment.json that produced the MP4 (exclusive with compilation)"),
+    silence: z.string().optional().describe("Path to .silence.json (auto-detected as <mp4>.silence.json)"),
+    mp4: z.string().optional().describe("Rendered MP4 path (for output naming + video dimensions)"),
+    output: z.string().optional(),
+  }),
+});
+
+export const videoSceneDetect = cliTool({
+  name: "video_scene_detect",
+  description:
+    "Detect scene cuts in an MP4 (ffmpeg pixel-diff, optional luma-jump + silence-end). Writes <base>.scenes.json. First step of the reframe pipeline.",
+  script: "src/commands/video-scene-detect.ts",
+  positional: ["mp4"],
+  boolFlags: ["includeLuma", "includeSilence"],
+  input: z.object({
+    mp4: z.string().describe("Input MP4"),
+    pixelThreshold: z.number().optional().describe("ffmpeg scene filter threshold [0..1] (default 0.3)"),
+    includeLuma: z.boolean().optional(),
+    includeSilence: z.boolean().optional(),
+    minScene: z.number().optional().describe("Drop scenes shorter than this many seconds"),
+    output: z.string().optional(),
+  }),
+});
+
+export const videoFramerDetect = cliTool({
+  name: "video_framer_detect",
+  description:
+    "Extract midpoint frames for each scene in <scenes-json> and run Claude vision to detect software-window region candidates per scene. Writes <base>.framer.json (all candidates, unfiltered). Feed into framer_filter next.",
+  script: "src/commands/video-framer-detect.ts",
+  positional: ["mp4", "scenesJson"],
+  boolFlags: ["keepFrames"],
+  input: z.object({
+    mp4: z.string(),
+    scenesJson: z.string().describe("Path to .scenes.json"),
+    framesPerScene: z.number().optional(),
+    model: z.string().optional(),
+    keepFrames: z.boolean().optional(),
+    output: z.string().optional(),
+  }),
+});
+
+export const framerFilter = cliTool({
+  name: "framer_filter",
+  description:
+    "Reduce each scene in <framer-json> to exactly one chosen region. mode=biggest picks the largest-area region; mode=llm uses Claude + per-scene transcript excerpts to pick the region that matches what's being said. Writes <base>.framer.filtered.json.",
+  script: "src/commands/framer-filter.ts",
+  positional: ["framerJson"],
+  input: z.object({
+    framerJson: z.string().describe("Path to .framer.json"),
+    mode: z.string().optional().describe("biggest | llm (default biggest)"),
+    words: z.string().optional().describe("Path to .words.json (used in mode=llm for transcript context)"),
+    model: z.string().optional(),
+    output: z.string().optional(),
+  }),
+});
+
+export const videoReframeRender = cliTool({
+  name: "video_reframe_render",
+  description:
+    "Reframe an MP4 to a target aspect using a .framer.filtered.json: per-scene blurred background + centered crop of the chosen region. Writes <base>.reframed.mp4. Defaults to 1080x1920 portrait.",
+  script: "src/commands/video-reframe-render.ts",
+  positional: ["mp4", "filteredJson"],
+  input: z.object({
+    mp4: z.string(),
+    filteredJson: z.string().describe("Path to .framer.filtered[.N].json"),
+    width: z.number().optional(),
+    height: z.number().optional(),
+    preset: z.string().optional(),
+    crf: z.number().optional(),
+    output: z.string().optional(),
+  }),
+});
+
+export const framerRefine = cliTool({
+  name: "framer_refine",
+  description:
+    "Modify which region is chosen per scene in a .framer.filtered[.N].json. Loads the unfiltered .framer.json (all candidates) + optional .words.json (per-scene transcript) and picks a different candidate per scene based on the instruction. Writes the next .framer.filtered.N.json. Feed to video_reframe_render to see the result.",
+  script: "src/commands/framer-refine.ts",
+  positional: ["filteredJson"],
+  input: z.object({
+    filteredJson: z.string().describe("Path to .framer.filtered[.N].json"),
+    instruction: z
+      .string()
+      .describe("Free-text modification, e.g. 'use the github window instead of the terminal when we were discussing code'"),
+    unfiltered: z.string().optional().describe("Override .framer.json (default: derived by stripping .filtered)"),
+    words: z.string().optional().describe("Optional .words.json for transcript context per scene"),
+    userPrompt: z.string().optional(),
+    output: z.string().optional(),
+  }),
+});
+
+export const captionRefine = cliTool({
+  name: "caption_refine",
+  description:
+    "Modify an existing .caption.json via a free-text instruction. Can edit phrase text (e.g. inject '$' or fix homophones), style fields (color/font/size/alignment/animation/etc.), or the title. Writes the next .caption.N.json. Pass to video_caption_render to produce a new captioned MP4.",
+  script: "src/commands/caption-refine.ts",
+  positional: ["captionJson"],
+  input: z.object({
+    captionJson: z.string().describe("Path to .caption[.N].json"),
+    instruction: z
+      .string()
+      .describe("Free-text modification (e.g. 'add $ before 19 in the money phrase', 'change font color to red')"),
+    words: z.string().optional().describe("Override .words.json path (default: plan.words_source)"),
+    userPrompt: z.string().optional().describe("Original user request — forwarded to the LLM as context"),
+    output: z.string().optional(),
+  }),
+});
+
+export const videoCaptionRender = cliTool({
+  name: "video_caption_render",
+  description:
+    "Burn captions onto an MP4 from a .caption.json plan (Remotion render). No style flags — all styling lives in the plan. Writes <mp4-base>.captioned.mp4 next to the source. Returns the output path on stdout.",
+  script: "src/commands/video-caption-render.ts",
+  positional: ["mp4", "captionJson"],
+  input: z.object({
+    mp4: z.string().describe("Input MP4 to caption (usually a compilation.cut.bleeped.mp4)"),
+    captionJson: z.string().describe("Path to .caption[.N].json plan"),
+    output: z.string().optional().describe("Output path (default: <mp4-base>.captioned.mp4)"),
+    concurrency: z.number().optional().describe("Remotion render concurrency (default 4)"),
+  }),
+});
+
 export const videoRemoveSilence = cliTool({
   name: "video_remove_silence",
   description:

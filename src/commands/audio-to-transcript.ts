@@ -16,6 +16,7 @@ import { ffprobe, tmpPath, registerTmp } from "../../lib/ffmpeg.js";
 import {
   Transcript,
   TranscriptSegment,
+  TranscriptWord,
   saveTranscript,
 } from "../../lib/transcript.js";
 import { ProgressReporter } from "../../lib/progress.js";
@@ -84,13 +85,24 @@ interface WhisperSegment {
   text: string;
 }
 
+interface WhisperWord {
+  word: string;
+  start: number;
+  end: number;
+}
+
+interface ChunkResult {
+  segments: WhisperSegment[];
+  words: WhisperWord[];
+}
+
 async function transcribeChunk(
   apiKey: string,
   audioPath: string,
   model: string,
   language?: string,
   offsetSec = 0
-): Promise<WhisperSegment[]> {
+): Promise<ChunkResult> {
   const audioBuffer = fs.readFileSync(audioPath);
   const blob = new Blob([audioBuffer], { type: "audio/mpeg" });
 
@@ -99,6 +111,7 @@ async function transcribeChunk(
   form.append("model", model);
   form.append("response_format", "verbose_json");
   form.append("timestamp_granularities[]", "segment");
+  form.append("timestamp_granularities[]", "word");
   if (language) form.append("language", language);
 
   const res = await undici.fetch("https://api.openai.com/v1/audio/transcriptions", {
@@ -107,9 +120,10 @@ async function transcribeChunk(
     body: form,
   });
 
-  const json = await res.json() as {
+  const json = (await res.json()) as {
     text?: string;
     segments?: WhisperSegment[];
+    words?: WhisperWord[];
     error?: { message: string; type: string; code: string };
   };
 
@@ -117,11 +131,73 @@ async function transcribeChunk(
     throw new Error(`Whisper API error ${res.status}: ${json.error?.message ?? res.statusText}`);
   }
 
-  return (json.segments ?? []).map((seg) => ({
+  const segments = (json.segments ?? []).map((seg) => ({
     start: seg.start + offsetSec,
     end: seg.end + offsetSec,
     text: seg.text.trim(),
   }));
+  const words = (json.words ?? []).map((w) => ({
+    word: w.word,
+    start: w.start + offsetSec,
+    end: w.end + offsetSec,
+  }));
+  return { segments, words };
+}
+
+/**
+ * Collapse runs of identical consecutive tokens that Whisper emits during
+ * near-silence (e.g. "33","33","33"). Merge into a single token spanning the run.
+ */
+function collapseHallucinations(words: WhisperWord[]): WhisperWord[] {
+  const out: WhisperWord[] = [];
+  for (const w of words) {
+    const last = out[out.length - 1];
+    if (last && last.word.toLowerCase() === w.word.toLowerCase()) {
+      last.end = w.end;
+    } else {
+      out.push({ ...w });
+    }
+  }
+  return out;
+}
+
+/**
+ * Whisper sometimes returns zero-duration words when forced-alignment can't
+ * anchor them. Give them a real duration capped by the next word's start.
+ */
+function fixZeroDurations(words: WhisperWord[]): WhisperWord[] {
+  const out = words.map((w) => ({ ...w }));
+  for (let i = 0; i < out.length; i++) {
+    if (out[i].end <= out[i].start) {
+      const next = out[i + 1]?.start ?? Infinity;
+      out[i].end = Math.min(out[i].start + 0.25, next - 0.01);
+      if (out[i].end <= out[i].start) out[i].end = out[i].start + 0.05;
+    }
+  }
+  return out;
+}
+
+/** Map each word to the segment whose range contains the word's midpoint. */
+function stampSegmentIndex(
+  words: WhisperWord[],
+  segments: TranscriptSegment[],
+): TranscriptWord[] {
+  return words.map((w) => {
+    const mid = (w.start + w.end) / 2;
+    let segIdx: number | undefined;
+    for (let i = 0; i < segments.length; i++) {
+      if (mid >= segments[i].start_s && mid <= segments[i].end_s) {
+        segIdx = i;
+        break;
+      }
+    }
+    return {
+      start_s: w.start,
+      end_s: w.end,
+      word: w.word,
+      ...(segIdx != null ? { segment_index: segIdx } : {}),
+    };
+  });
 }
 
 interface DiarizedWindow {
@@ -262,10 +338,14 @@ async function main() {
   process.stderr.write(`  Duration: ${duration.toFixed(1)}s\n`);
 
   let existingSegments: TranscriptSegment[] = [];
+  let existingWords: WhisperWord[] = [];
   let startChunk = 0;
   if (opts.resume && fs.existsSync(outputPath)) {
     const existing = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as Transcript;
     existingSegments = existing.segments;
+    if (existing.words) {
+      existingWords = existing.words.map((w) => ({ word: w.word, start: w.start_s, end: w.end_s }));
+    }
     if (existingSegments.length > 0) {
       const lastEnd = existingSegments[existingSegments.length - 1].end_s;
       startChunk = Math.floor(lastEnd / chunkSecs);
@@ -275,6 +355,7 @@ async function main() {
 
   const numChunks = Math.ceil(duration / chunkSecs);
   const allSegments: TranscriptSegment[] = [...existingSegments];
+  const allRawWords: WhisperWord[] = [...existingWords];
 
   for (let i = startChunk; i < numChunks; i++) {
     const chunkStart = i * chunkSecs;
@@ -288,16 +369,19 @@ async function main() {
 
     process.stderr.write(`${chunkLabel}: transcribing…\n`);
     let whisperSegments: WhisperSegment[] = [];
+    let whisperWords: WhisperWord[] = [];
     let attempts = 0;
     while (attempts < 3) {
       try {
-        whisperSegments = await transcribeChunk(
+        const result = await transcribeChunk(
           apiKey,
           chunkFile,
           opts.model,
           opts.language,
           chunkStart
         );
+        whisperSegments = result.segments;
+        whisperWords = result.words;
         break;
       } catch (e: unknown) {
         attempts++;
@@ -326,13 +410,18 @@ async function main() {
     }
 
     allSegments.push(...chunkSegments);
+    allRawWords.push(...whisperWords);
 
     const speakers = [...new Set(allSegments.map((s) => s.speaker))].sort();
+    const cleanedWords = fixZeroDurations(collapseHallucinations(allRawWords));
+    const words = stampSegmentIndex(cleanedWords, allSegments);
     saveTranscript(outputPath, {
       source: sourcePath,
       duration_s: duration,
       speakers,
       segments: allSegments,
+      words,
+      schema_version: 2,
     });
 
     progress.update((i + 1) / numChunks, `chunk ${i + 1}/${numChunks}`);
@@ -340,17 +429,21 @@ async function main() {
   }
 
   const speakers = [...new Set(allSegments.map((s) => s.speaker))].sort();
+  const cleanedWords = fixZeroDurations(collapseHallucinations(allRawWords));
+  const words = stampSegmentIndex(cleanedWords, allSegments);
   saveTranscript(outputPath, {
     source: sourcePath,
     duration_s: duration,
     speakers,
     segments: allSegments,
+    words,
+    schema_version: 2,
   });
 
   progress.done();
   process.stderr.write(
     `\nTranscript saved: ${outputPath}\n` +
-      `  ${allSegments.length} segments  ${speakers.length} speaker(s): ${speakers.join(", ")}\n`
+      `  ${allSegments.length} segments, ${words.length} words, ${speakers.length} speaker(s): ${speakers.join(", ")}\n`
   );
 }
 
