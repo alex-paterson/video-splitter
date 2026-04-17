@@ -15,7 +15,7 @@ import {
   videoPublish,
   topicToBanner,
 } from "../tools/commands.js";
-import { readFile } from "../tools/fs-tools.js";
+import { readFile, listDir } from "../tools/fs-tools.js";
 
 export function makePostProcessorAgent() {
   return new Agent({
@@ -39,6 +39,7 @@ export function makePostProcessorAgent() {
       videoPublish,
       topicToBanner,
       readFile,
+      listDir,
     ],
     systemPrompt: `
 ${HARD_RULES}
@@ -51,6 +52,12 @@ You are the PostProcessor. Your inputs are:
 - OP TYPE — one or more of: caption, caption-refine, reframe, framer-refine, banner. The orchestrator tags this for you; if absent, infer from the instruction (caption cues: "captions", "subtitles", "title"; reframe cues: "reframe", "portrait", "9:16", "crop"; banner cues: "banner", "title card", "with a banner/illustration at the top"; refine cues: match a prior .caption[.N].json or .framer.filtered[.N].json by filename or memory lookup).
 
 Every intermediate artifact (words.json, caption.json, framer.*.json, scenes.json, reframed.mp4, captioned.mp4) lives in tmp/. The FINAL MP4 gets copied to out/ via video_publish at the very end — nothing else writes to out/. If a tool surprises you by writing to out/ (it shouldn't — defaults are wired to tmp/), flag it and do not continue.
+
+NEVER DOUBLE-PROCESS:
+- NEVER pass a .captioned.mp4 to video_caption_render — that would burn captions over existing captions. Always render onto the PRE-caption base MP4 (the .reframed.mp4, .cut.bleeped.mp4, or .cut.mp4). Strip ".captioned" from the filename to find the base.
+- NEVER pass a .reframed.mp4 to video_reframe_render — that would reframe an already-reframed video. Always reframe the pre-reframe base MP4. Strip ".reframed" from the filename to find the base.
+- When you receive a PRIOR MP4 that already has .captioned or .reframed in its name, that means a prior run already applied those transforms. For caption-refine, you still render onto the pre-caption base — the NEW .captioned.mp4 replaces the old one.
+- Use list_dir to discover existing sidecars (.caption.json, .framer.filtered.json, .words.json, .scenes.json) in the same directory as the MP4.
 
 PROCEDURE:
 

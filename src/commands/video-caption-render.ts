@@ -34,6 +34,14 @@ async function main() {
   if (!fs.existsSync(mp4Path)) throw new Error(`MP4 not found: ${mp4Path}`);
   if (!fs.existsSync(planPath)) throw new Error(`Plan not found: ${planPath}`);
 
+  if (path.basename(mp4Path).includes(".captioned.")) {
+    const base = mp4Path.replace(/\.captioned(?=\.(mp4|mkv)$)/, "");
+    process.stderr.write(
+      `WARNING: Input MP4 already has ".captioned" in its name — this will double-burn captions.\n` +
+      `  You probably want the pre-caption base: ${base}\n`
+    );
+  }
+
   const plan = loadCaptionPlan(planPath);
 
   process.stderr.write(`Probing ${mp4Path}\n`);
