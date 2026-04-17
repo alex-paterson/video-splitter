@@ -103,6 +103,10 @@ export const SubtitleWithWordTimings: React.FC<Props> = ({ currentSeconds, phras
                 color: shouldRenderHighlight ? textHighlightColor : fontColor,
                 transform: `scale(${wordScale}, ${wordScale})`,
                 textTransform: textCapitalization === "uppercase" ? "uppercase" : "none",
+                WebkitTextStrokeWidth: strokeWidth > 0 ? `${strokeWidth}px` : undefined,
+                WebkitTextStrokeColor: strokeWidth > 0 ? strokeColor : undefined,
+                paintOrder: "stroke fill",
+                textShadow: textShadow || undefined,
               }}
             >
               {/* invisible placeholder reserves width so other words don't shift */}
@@ -113,48 +117,11 @@ export const SubtitleWithWordTimings: React.FC<Props> = ({ currentSeconds, phras
                 {renderWord(word.text)}
               </span>
 
-              {/* stroke under text */}
-              <span
-                style={{
-                  position: "absolute",
-                  zIndex: -1,
-                  WebkitTextStrokeWidth: `${strokeWidth}px`,
-                  WebkitTextStrokeColor: strokeColor,
-                  left,
-                  top: 0,
-                  bottom: 0,
-                  right: 0,
-                  opacity,
-                  fontSize,
-                }}
-              >
-                {renderWord(word.text)}
-              </span>
-
-              {/* shadow as a separate layer below stroke */}
-              {textShadow && (
-                <span
-                  style={{
-                    position: "absolute",
-                    zIndex: -2,
-                    textShadow,
-                    left,
-                    top: 0,
-                    bottom: 0,
-                    right: 0,
-                    opacity,
-                    fontSize,
-                  }}
-                >
-                  {renderWord(word.text)}
-                </span>
-              )}
-
               {hasBackground && (
                 <span
                   style={{
                     position: "absolute",
-                    zIndex: -3,
+                    zIndex: -1,
                     left: left - fontSizePx / 3,
                     top: -(fontSizePx / 3.5),
                     bottom: -(fontSizePx / 4),

@@ -31,19 +31,6 @@ export const StaticText: React.FC<Props> = ({ currentSeconds, text, startSec, en
   const fontSize = `${fontSizePx}px`;
   const hasBackground = backgroundColor !== "transparent" && backgroundColor !== "";
 
-  const textStyle: React.CSSProperties = {
-    fontSize,
-    lineHeight: 1.1,
-    fontFamily: fontName,
-    color: fontColor,
-    textAlign: horizontalCaptionAlignment,
-    textTransform: textCapitalization === "uppercase" ? "uppercase" : "none",
-    margin: 0,
-    position: "relative",
-    zIndex: 1,
-    whiteSpace: "pre-wrap",
-  };
-
   return (
     <div
       style={{
@@ -61,39 +48,11 @@ export const StaticText: React.FC<Props> = ({ currentSeconds, text, startSec, en
       }}
     >
       <div style={{ position: "relative", display: "inline-block" }}>
-        <span style={textStyle}>{text}</span>
-        <span
-          style={{
-            ...textStyle,
-            position: "absolute",
-            inset: 0,
-            zIndex: -1,
-            color: "transparent",
-            WebkitTextStrokeWidth: `${strokeWidth}px`,
-            WebkitTextStrokeColor: strokeColor,
-          }}
-        >
-          {text}
-        </span>
-        {textShadow && (
-          <span
-            style={{
-              ...textStyle,
-              position: "absolute",
-              inset: 0,
-              zIndex: -2,
-              color: fontColor,
-              textShadow,
-            }}
-          >
-            {text}
-          </span>
-        )}
         {hasBackground && (
           <span
             style={{
               position: "absolute",
-              zIndex: -3,
+              zIndex: -1,
               left: -fontSizePx / 3,
               right: -fontSizePx / 3,
               top: -fontSizePx / 4,
@@ -103,6 +62,23 @@ export const StaticText: React.FC<Props> = ({ currentSeconds, text, startSec, en
             }}
           />
         )}
+        <span
+          style={{
+            fontSize,
+            lineHeight: 1.1,
+            fontFamily: fontName,
+            color: fontColor,
+            textAlign: horizontalCaptionAlignment,
+            textTransform: textCapitalization === "uppercase" ? "uppercase" : "none",
+            whiteSpace: "pre-wrap",
+            WebkitTextStrokeWidth: strokeWidth > 0 ? `${strokeWidth}px` : undefined,
+            WebkitTextStrokeColor: strokeWidth > 0 ? strokeColor : undefined,
+            paintOrder: "stroke fill",
+            textShadow: textShadow || undefined,
+          }}
+        >
+          {text}
+        </span>
       </div>
     </div>
   );

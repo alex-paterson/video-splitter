@@ -41,7 +41,10 @@
       "Read(//private/tmp/**)",
       "Bash(rm -f /Users/macmini/Projects/video-splitter/out/*.mp4)",
       "Bash(find /Users/macmini/Projects/video-splitter/tmp -type f ! -name '.gitkeep' -delete)",
-      "Bash(pkill -f \"concurrently\")"
+      "Bash(pkill -f \"concurrently\")",
+      "Bash(ffmpeg -hide_banner -loglevel error -i '/Users/macmini/Projects/video-splitter/out/2026-04-13 22-05-31.shopping-for-game-sound-packs-and-debati.compilation.4.json.compilation.reframed.captioned.mp4' -vf 'select='\\\\''eq\\(n\\\\,30\\)'\\\\''' -vsync vfr -frames:v 1 /tmp/title_check.png)",
+      "Bash(ffmpeg -hide_banner -loglevel error -i \"/Users/macmini/Projects/video-splitter/out/2026-04-13 22-05-31.shopping-for-game-sound-packs-and-debati.compilation.4.json.compilation.reframed.captioned.mp4\" -vf \"select='eq\\(n\\\\,150\\)'\" -vsync vfr -frames:v 1 /tmp/title_check2.png)",
+      "Bash(ffmpeg -hide_banner -loglevel error -i \"/Users/macmini/Projects/video-splitter/tmp/2026-04-13 22-05-31.shopping-for-game-sound-packs-and-debati.compilation.4.json.compilation.reframed.captioned.mp4\" -vf \"select='eq\\(n\\\\,30\\)+eq\\(n\\\\,150\\)'\" -vsync vfr -frames:v 2 /tmp/fixed_%02d.png)"
     ]
   }
 }
