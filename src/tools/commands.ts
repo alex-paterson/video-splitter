@@ -296,6 +296,7 @@ export const captionPlan = cliTool({
   script: "src/commands/caption-plan.ts",
   positional: ["wordsJson"],
   boolFlags: ["oneWordAtATime"],
+  negatedBoolFlags: ["fixTypos"],
   input: z.object({
     wordsJson: z.string().describe("Path to .words.json produced by transcript_project_words"),
     output: z.string().optional().describe("Output .caption.json path (default: <mp4-base>.caption.json)"),
@@ -343,6 +344,7 @@ export const captionPlan = cliTool({
     bannerOpacity: z.number().optional().describe("Opacity 0..1 (default 1.0)"),
     bannerStartSec: z.number().optional().describe("When banner appears (default 0)"),
     bannerEndSec: z.number().optional().describe("When banner disappears (default full duration)"),
+    fixTypos: z.boolean().optional().describe("LLM pass to fix transcription typos (default true). Pass false to disable."),
   }),
 });
 
