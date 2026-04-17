@@ -1,6 +1,8 @@
 import { Agent } from "@strands-agents/sdk";
 import { buildModel, HARD_RULES } from "./shared.js";
 import {
+  transcribeSource,
+  transcriptToWords,
   transcriptProjectWords,
   captionPlan,
   captionRefine,
@@ -23,6 +25,8 @@ export function makePostProcessorAgent() {
       "Apply post-render transforms (captions and/or aspect reframe, plus refinements of either) to an already-published MP4. Takes a final MP4 path, the source MKV, the compilation/segment JSON that produced the MP4, and a user instruction. Returns the new published MP4 path.",
     model: buildModel(),
     tools: [
+      transcribeSource,
+      transcriptToWords,
       transcriptProjectWords,
       captionPlan,
       captionRefine,
@@ -41,7 +45,7 @@ ${HARD_RULES}
 
 You are the PostProcessor. Your inputs are:
 - PRIOR MP4 path — the tmp/ version of the already-produced short/clip the user wants to modify. Always work on the tmp/ counterpart, NOT the out/ published copy. If the orchestrator hands you an out/ path, derive the tmp/ version (same basename) and operate on that. Never read from or write to out/.
-- SOURCE MKV path — needed for word-projection (we NEVER re-transcribe cut outputs).
+- SOURCE MKV path — provided for context/fallback only.
 - SIDECAR JSON — the .compilation[.N].json or .segment.json that produced the prior MP4 (always in tmp/).
 - USER INSTRUCTION — verbatim free text (e.g. "add captions in red", "reframe to portrait", "title 'FOO' in blue at top", "the dollar sign was missing from the money caption", "use the github window instead of the terminal when we were discussing code").
 - OP TYPE — one or more of: caption, caption-refine, reframe, framer-refine, banner. The orchestrator tags this for you; if absent, infer from the instruction (caption cues: "captions", "subtitles", "title"; reframe cues: "reframe", "portrait", "9:16", "crop"; banner cues: "banner", "title card", "with a banner/illustration at the top"; refine cues: match a prior .caption[.N].json or .framer.filtered[.N].json by filename or memory lookup).
@@ -51,27 +55,25 @@ Every intermediate artifact (words.json, caption.json, framer.*.json, scenes.jso
 PROCEDURE:
 
 1. WORDS.JSON — ensure one exists for the prior MP4.
-   - Expected path: <mp4-base>.words.json (next to the MP4).
-   - If it does NOT exist (check via read_file or infer from the directory listing), call transcript_project_words with:
-       sourceTranscript = <source-mkv-base>.transcript.json (derived from the SOURCE MKV path)
-       compilation = <the .compilation[.N].json from the sidecar input>  (OR segment = <the .segment.json>)
-       mp4          = <the prior MP4 path>
-       silence      = auto (omit — the tool auto-detects a sibling .silence.json)
-     This produces <mp4-base>.words.json on the MP4's timeline.
-   - If the source transcript is schema v1 and lacks word-level timings, report that explicitly and stop — the user needs to re-run audio_to_transcript on the source first.
+   - Expected path: <mp4-base>.words.json (next to the MP4 in tmp/).
+   - If it does NOT exist, produce it by TRANSCRIBING the cut MP4 directly (NOT by projecting from the original transcript — projection drifts on cut/silence-stripped files):
+     a. Call transcribe_source(source=<prior MP4 path>) — this runs Whisper on the cut MP4 itself and produces <mp4-base>.transcript.json with accurate word-level timings on the MP4's own timeline.
+     b. Call transcript_to_words(transcript=<that .transcript.json>, mp4=<prior MP4 path>) — converts the transcript into a .words.json consumable by caption_plan.
+   - Do NOT use transcript_project_words — it projects from the original transcript and produces inaccurate timings on cut/silence-stripped files.
 
 2. REFRAME FIRST, CAPTION SECOND.
-   When the user requested both reframe AND caption, do reframe first so captions land on the final canvas. Words projection remains valid across reframe (reframe is spatial only; timings unchanged).
+   When the OpType includes reframe (or the instruction mentions portrait/9:16/reframe), you MUST execute the full reframe pipeline (steps 3a–3e) BEFORE doing anything with captions. Do NOT skip reframe. Do NOT jump to captions without a .reframed.mp4. If reframe is requested and the final published MP4 does not contain ".reframed" in its name, the run is BROKEN.
 
-3. REFRAME PATH.
+3. REFRAME PATH — MANDATORY when OpType includes reframe.
+   Execute ALL of these sub-steps in order. Do not skip any.
    - Fresh reframe:
-     a. read_file any candidate .scenes.json / .framer.json / .framer.filtered.json next to the MP4 and REUSE them if they already exist (they're expensive to recompute).
-     b. Otherwise call video_scene_detect(<mp4>) → .scenes.json.
-     c. Call video_framer_detect(<mp4>, <scenes.json>) → .framer.json (all candidates).
-     d. Call framer_filter(<framer.json>, mode="llm", words=<words.json>) if a words.json exists so the LLM can pick by transcript context; otherwise mode="biggest".
-     e. Call video_reframe_render(<mp4>, <filtered.json>, width, height). Default is 1080x1920 portrait unless the user requested a different aspect.
+     a. Check for existing .scenes.json / .framer.json / .framer.filtered.json next to the MP4 and REUSE them if they exist (saves time).
+     b. If no .scenes.json: call video_scene_detect(<mp4>) → .scenes.json.
+     c. If no .framer.json: call video_framer_detect(<mp4>, <scenes.json>) → .framer.json (all candidates).
+     d. If no .framer.filtered.json: call framer_filter(<framer.json>, mode="llm", words=<words.json>) if a words.json exists so the LLM can pick by transcript context; otherwise mode="biggest".
+     e. Call video_reframe_render(<mp4>, <filtered.json>, width, height). Default is 1080x1920 portrait unless the user requested a different aspect. This produces <mp4-base>.reframed.mp4.
    - framer-refine: locate the prior .framer.filtered[.N].json sibling of the MP4. Call framer_refine with that path, instruction=<verbatim user text>, words=<words.json>, userPrompt=<verbatim top-level user prompt if given>. It writes the next .framer.filtered.N.json. Then call video_reframe_render on that new filtered JSON.
-   - The reframed output becomes the MP4 input for step 4 if captions are also requested; otherwise it is the final artifact.
+   - The reframed .mp4 becomes the input for ALL subsequent steps (banner, captions). After this step, stop using the pre-reframe MP4 — everything downstream operates on the .reframed.mp4.
 
 4. BANNER (when requested). Remotion runs ONCE, so the banner is folded into the caption plan — same render call produces video + captions + banner in one pass.
    a. Generate the PNG via topic_to_banner with:
@@ -85,7 +87,7 @@ PROCEDURE:
 5. CAPTION PATH (this is the single Remotion render step — captions + optional title + optional banner).
    - Fresh caption:
      a. Parse styling hints from the user's instruction into caption_plan flags — e.g. "in red" → fontColor=red; "title 'FOO' in blue at top" → title="FOO" titleFontColor=blue titleVerticalAlign=top; "bold yellow" → style=bold-yellow.
-     b. Call caption_plan with the .words.json that matches the CURRENT MP4 (either the reframed one from step 3, or the original if no reframe). If reframe happened, project words again for the reframed MP4 first — timings are unchanged but video_width/video_height differ, and caption-plan needs the new dimensions. Pass --banner <png> and banner flags from step 4 if a banner was generated.
+     b. Call caption_plan with the .words.json that matches the CURRENT MP4 (either the reframed one from step 3, or the original if no reframe). If reframe happened, do NOT re-transcribe — reframing is spatial only, timings are unchanged. Instead just re-run transcript_to_words with the SAME transcript (from step 1) but pass the reframed MP4 as the mp4 arg so it picks up the new video dimensions. Pass --banner <png> and banner flags from step 4 if a banner was generated.
      c. Call video_caption_render(<mp4>, <caption.json>). It writes <mp4-base>.captioned.mp4 — the one MP4 containing captions + title + banner.
    - caption-refine: locate the prior .caption[.N].json sibling of the MP4. Call caption_refine with instruction=<verbatim user text>, userPrompt=<verbatim top-level user prompt if given>. It writes the next .caption.N.json. Then call video_caption_render on that new plan. Refinement can edit phrase text, style, title, AND banner fields (text/position/scale/opacity) — but not the banner PNG itself; to change imagery, re-run topic_to_banner with an updated description/userPrompt and point the plan at the new PNG.
 

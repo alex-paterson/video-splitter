@@ -48,11 +48,23 @@ export async function streamAgentWithReasoning(
 
   try {
   while (true) {
-    if (isCancelled(bus.getCurrentRunId())) {
+    if (isCancelled(bus.getCurrentRunId()) || cancelSignal?.aborted) {
       try { await gen.return(undefined as never); } catch { /* ignore */ }
       throw new Error("RUN_CANCELLED");
     }
-    const next = await gen.next();
+    let next;
+    try {
+      next = await gen.next();
+    } catch (e) {
+      // If we're cancelled, the SDK can throw confusing internal errors
+      // (e.g. "Cannot read properties of undefined (reading 'role')") from
+      // mid-stream aggregation. Normalize to RUN_CANCELLED so the frontend
+      // doesn't show the SDK's internal race noise.
+      if (isCancelled(bus.getCurrentRunId()) || cancelSignal?.aborted) {
+        throw new Error("RUN_CANCELLED");
+      }
+      throw e;
+    }
     if (next.done) {
       result = next.value;
       break;

@@ -327,7 +327,10 @@ async function main() {
   const diarizeBackend = process.env.DIARIZE_BACKEND ?? "whisper-heuristic";
   const sourcePath = opts.source ? path.resolve(opts.source) : audioPath;
 
-  const base = path.basename(audioPath).replace(/\.audio\.mp3$/, "").replace(/\.[^.]+$/, "");
+  const raw = path.basename(audioPath);
+  const base = raw.endsWith(".audio.mp3")
+    ? raw.slice(0, -".audio.mp3".length)
+    : raw.replace(/\.[^.]+$/, "");
   const defaultOutput = path.join(path.dirname(audioPath), base + ".transcript.json");
   const outputPath = path.resolve(outputArg ?? defaultOutput);
 
@@ -445,6 +448,7 @@ async function main() {
     `\nTranscript saved: ${outputPath}\n` +
       `  ${allSegments.length} segments, ${words.length} words, ${speakers.length} speaker(s): ${speakers.join(", ")}\n`
   );
+  process.stdout.write(outputPath + "\n");
 }
 
 main().catch((err) => {

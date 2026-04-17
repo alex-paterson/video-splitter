@@ -80,7 +80,7 @@ async function renderScene(
   const filter =
     `[0:v]split=2[bg][fg];` +
     `[bg]scale=${outW}:${outH}:force_original_aspect_ratio=increase:flags=lanczos,` +
-    `crop=${outW}:${outH},gblur=sigma=30,setsar=1[bgc];` +
+    `crop=${outW}:${outH},gblur=sigma=30,eq=brightness=-0.15,setsar=1[bgc];` +
     `[fg]crop=${bw}:${bh}:${bx}:${by},` +
     `scale=${outW}:${outH}:force_original_aspect_ratio=decrease:flags=lanczos,setsar=1[fgs];` +
     `[bgc][fgs]overlay=(W-w)/2:(H-h)/2[v]`;

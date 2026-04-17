@@ -47,7 +47,7 @@ function ffmpegCapture(args: string[]): Promise<string> {
 }
 
 /** Pixel-diff scene detector using ffmpeg's `scene` filter. */
-export async function pixelDiffCuts(video: string, threshold = 0.3): Promise<SceneCut[]> {
+export async function pixelDiffCuts(video: string, threshold = 0.1): Promise<SceneCut[]> {
   const stderr = await ffmpegCapture([
     "-i", video,
     "-filter:v", `select='gt(scene,${threshold})',metadata=print`,

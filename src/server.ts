@@ -15,7 +15,8 @@ import { makeOrchestratorAgent } from "./agents/orchestrator.js";
 import { streamAgentWithReasoning } from "./tools/fan-out.js";
 import { bus, BusEvent } from "./lib/event-bus.js";
 import { killRun, clearCancelled, isCancelled } from "./tools/cli-tool.js";
-import { appendMemoryEntry } from "./tools/memory.js";
+import { appendMemoryEntry, appendDebugMemoryEntry } from "./tools/memory.js";
+import { renderDebugTrace, RunTraceCollector } from "./lib/run-trace.js";
 
 const runAbortControllers = new Map<string, AbortController>();
 
@@ -130,6 +131,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const run_id = randomUUID();
+      const userPrompt = body.prompt;
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ run_id }));
 
@@ -137,7 +139,9 @@ const server = http.createServer(async (req, res) => {
       (async () => {
         bus.setCurrentRunId(run_id);
         clearCancelled(run_id);
-        bus.publish({ type: "agent_start", run_id, prompt: body.prompt });
+        const trace = new RunTraceCollector(run_id);
+        trace.start();
+        bus.publish({ type: "agent_start", run_id, prompt: userPrompt });
         const ac = new AbortController();
         runAbortControllers.set(run_id, ac);
         const orchStartedAt = Date.now();
@@ -147,7 +151,7 @@ const server = http.createServer(async (req, res) => {
             orchestrator,
             "orchestrator",
             "orchestrator",
-            body.prompt!,
+            userPrompt,
             ac.signal,
           );
           bus.publish({
@@ -177,7 +181,7 @@ const server = http.createServer(async (req, res) => {
           try {
             const reason = isCancelled(run_id) ? "cancelled by user" : `failed: ${msg}`;
             appendMemoryEntry(
-              `## Run ${reason}\n- Prompt: ${body.prompt!.slice(0, 500)}\n- Outcome: ${reason}`
+              `## Run ${reason}\n- Prompt: ${userPrompt.slice(0, 500)}\n- Outcome: ${reason}`
             );
           } catch { /* ignore */ }
           if (isCancelled(run_id)) {
@@ -189,6 +193,14 @@ const server = http.createServer(async (req, res) => {
         } finally {
           runAbortControllers.delete(run_id);
           if (bus.getCurrentRunId() === run_id) bus.setCurrentRunId(undefined);
+          // Flush the debug memory entry (tool-chain + reasoning) for this run.
+          // The agent IGNORES .memory.debug.md; it's for humans reviewing runs.
+          try {
+            trace.stop();
+            appendDebugMemoryEntry(renderDebugTrace(run_id, userPrompt, trace.events));
+          } catch (e) {
+            process.stderr.write(`memory.debug write failed: ${e instanceof Error ? e.message : String(e)}\n`);
+          }
         }
       })();
       return;
@@ -297,6 +309,13 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: String(e) }));
     }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/clear") {
+    bus.clearBacklog();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
     return;
   }
 

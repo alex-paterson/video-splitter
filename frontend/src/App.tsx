@@ -233,6 +233,7 @@ export function App() {
                     onClick={() => {
                       setEvents([]);
                       try { localStorage.removeItem(STORAGE_KEY); } catch { }
+                      fetch("/clear", { method: "POST" }).catch(() => { });
                     }}
                     className="rounded-md bg-neutral-800 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-700"
                   >
@@ -319,7 +320,7 @@ export function App() {
                         const br = (b.kind === "tool" || b.kind === "subagent") && !b.closed ? 0 : 1;
                         return ar - br;
                       })
-                      .map((g) => {
+                      .map((g, i, arr) => {
                         const isAgentStart = g.kind === "solo" && g.ev.type === "agent_start";
                         const node =
                           g.kind === "tool" ? (
@@ -332,6 +333,8 @@ export function App() {
                             <EventBlock key={g.ev.id} ev={g.ev} />
                           );
                         if (isAgentStart) {
+                          const isLast = !arr.slice(i + 1).some((x) => x.kind === "solo" && x.ev.type === "agent_start");
+                          if (isLast) return node;
                           return (
                             <Fragment key={g.kind === "solo" ? g.ev.id : (g as { id: string }).id}>
                               {node}
@@ -926,9 +929,11 @@ function ReasoningPane({ text, wrapCls }: { text: string; wrapCls: string }) {
         </span>
       </button>
       {open && (
-        <pre ref={preRef} className={`max-h-80 overflow-auto px-4 py-2 font-mono text-xs leading-relaxed text-neutral-400 ${wrapCls}`}>
-          {text}
-        </pre>
+        <div ref={preRef} className={`max-h-80 overflow-auto px-4 py-2 font-mono text-xs text-neutral-400 ${wrapCls}`}>
+          {text.split("\n").filter(Boolean).map((line, i) => (
+            <p key={i} className="mb-2 last:mb-0">{line}</p>
+          ))}
+        </div>
       )}
     </div>
   );

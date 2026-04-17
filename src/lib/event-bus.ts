@@ -61,6 +61,10 @@ class EventBus {
     return this.backlog.slice();
   }
 
+  clearBacklog(): void {
+    this.backlog.length = 0;
+  }
+
   subscribe(handler: (ev: BusEvent) => void): () => void {
     this.emitter.on("event", handler);
     return () => this.emitter.off("event", handler);

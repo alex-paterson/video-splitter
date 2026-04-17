@@ -25,7 +25,7 @@ program
   .name("video-scene-detect")
   .description("Detect scene cuts and write <base>.scenes.json")
   .argument("<mp4>", "Input video")
-  .option("--pixel-threshold <n>", "ffmpeg scene filter threshold [0..1]", "0.3")
+  .option("--pixel-threshold <n>", "ffmpeg scene filter threshold [0..1]", "0.1")
   .option("--include-luma", "Include luma-jump signal", false)
   .option("--include-silence", "Include silence-end signal", false)
   .option("--min-scene <n>", "Drop scenes shorter than this many seconds", "0.5")

@@ -17,7 +17,13 @@ export async function transcribeSourceFn(source: string): Promise<string> {
   if (!(fs.existsSync(audioPath) && fs.statSync(audioPath).size > 0)) {
     await runCli("src/commands/video-to-audio.ts", [abs]);
   }
+  if (!fs.existsSync(audioPath)) {
+    return `ERROR: video-to-audio did not produce expected audio at ${audioPath}`;
+  }
   await runCli("src/commands/audio-to-transcript.ts", [audioPath, "--source", abs]);
+  if (!fs.existsSync(transcriptPath) || fs.statSync(transcriptPath).size === 0) {
+    return `ERROR: audio-to-transcript did not produce transcript at ${transcriptPath}`;
+  }
   return transcriptPath;
 }
 
@@ -340,6 +346,19 @@ export const captionPlan = cliTool({
   }),
 });
 
+export const transcriptToWords = cliTool({
+  name: "transcript_to_words",
+  description:
+    "Convert a .transcript.json (produced by transcribing a cut MP4 directly) into a .words.json for caption_plan. No projection needed — timings are already on the MP4 timeline. Use this after transcribe_source on a rendered/cut MP4.",
+  script: "src/commands/transcript-to-words.ts",
+  positional: ["transcript", "mp4"],
+  input: z.object({
+    transcript: z.string().describe("Path to .transcript.json (transcribed from the cut MP4)"),
+    mp4: z.string().describe("The cut MP4 the transcript was produced from (for dimensions + duration)"),
+    output: z.string().optional(),
+  }),
+});
+
 export const transcriptProjectWords = cliTool({
   name: "transcript_project_words",
   description:
@@ -365,7 +384,7 @@ export const videoSceneDetect = cliTool({
   boolFlags: ["includeLuma", "includeSilence"],
   input: z.object({
     mp4: z.string().describe("Input MP4"),
-    pixelThreshold: z.number().optional().describe("ffmpeg scene filter threshold [0..1] (default 0.3)"),
+    pixelThreshold: z.number().optional().describe("ffmpeg scene filter threshold [0..1] (default 0.1, lower = more sensitive)"),
     includeLuma: z.boolean().optional(),
     includeSilence: z.boolean().optional(),
     minScene: z.number().optional().describe("Drop scenes shorter than this many seconds"),
